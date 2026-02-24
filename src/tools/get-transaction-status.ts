@@ -5,7 +5,16 @@ import { getIntentStatus } from "../relay-api.js";
 export function register(server: McpServer) {
   server.tool(
     "get_transaction_status",
-    "Check the status of a Relay bridge or swap transaction. Statuses: waiting (submitted), pending (processing), success (complete), failure, refund. Use the requestId returned from execute_bridge.",
+    `Check the status of a Relay bridge or swap transaction. Use the requestId returned from execute_bridge.
+
+Statuses:
+  waiting  — The origin chain transaction has been broadcast but not yet confirmed on-chain. Just wait — no further action needed.
+  pending  — The relay network has picked up the request and is processing the cross-chain transfer.
+  success  — Complete. Funds have arrived on the destination chain.
+  failure  — The transaction failed.
+  refund   — The transaction was refunded to the sender.
+
+IMPORTANT: After the wallet "execute" action completes all steps (approval + deposit), Relay handles the cross-chain delivery automatically. Poll every 5-10 seconds until success or failure. The user does NOT need to do anything else after execution completes — just wait.`,
     {
       requestId: z
         .string()
@@ -16,10 +25,12 @@ export function register(server: McpServer) {
     async ({ requestId }) => {
       const status = await getIntentStatus(requestId);
 
+      const trackingUrl = `https://relay.link/transaction/${requestId}`;
+
       let summary: string;
       switch (status.status) {
         case "success":
-          summary = `Transaction complete. Destination tx: ${status.txHashes?.join(", ") || "pending confirmation"}.`;
+          summary = `Transaction complete! Destination tx: ${status.txHashes?.join(", ") || "pending confirmation"}.\n\nView on Relay: ${trackingUrl}`;
           break;
         case "pending":
           summary = "Transaction is being processed by the relay network.";

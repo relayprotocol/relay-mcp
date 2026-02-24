@@ -5,7 +5,7 @@ import { buildRelayAppUrl } from "../deeplink.js";
 export function register(server: McpServer) {
   server.tool(
     "get_relay_app_url",
-    "Generate a deep link to the Relay web app with pre-filled bridge/swap parameters. The user can open this URL in their browser, connect their wallet, and sign the transaction. Use this when the user wants to execute a transaction through the Relay UI rather than programmatically.",
+    "Generate a deep link to the Relay web app with pre-filled bridge/swap parameters. The user can open this URL in their browser to START a new transaction via the Relay UI. This is NOT a transaction tracking URL — do NOT use it to check on an in-progress transaction. For tracking, use get_transaction_status with the requestId.",
     {
       destinationChainId: z
         .number()

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
+    "@walletconnect/sign-client": "^2.17.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {

@@ -133,31 +133,53 @@ export interface FeeEntry {
   amountUsd: string;
 }
 
+export interface TransactionData {
+  from: string;
+  to: string;
+  data: string;
+  value: string;
+  chainId: number;
+  gas?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+}
+
+export interface SignatureData {
+  sign?: {
+    signatureKind: "eip191" | "eip712";
+    domain?: any;
+    types?: any;
+    primaryType?: string;
+    value?: any;
+    message?: string;
+  };
+  post?: {
+    body: any;
+    method: string;
+    endpoint: string;
+  };
+}
+
+export interface StepItem {
+  status: string;
+  data: any; // TransactionData for kind=transaction, SignatureData for kind=signature
+  check?: {
+    endpoint: string;
+    method: string;
+  };
+}
+
+export interface Step {
+  id: string;
+  action: string;
+  description: string;
+  kind: "transaction" | "signature";
+  requestId: string;
+  items: StepItem[];
+}
+
 export interface QuoteResponse {
-  steps: Array<{
-    id: string;
-    action: string;
-    description: string;
-    kind: string;
-    requestId: string;
-    items: Array<{
-      status: string;
-      data: {
-        from: string;
-        to: string;
-        data: string;
-        value: string;
-        chainId: number;
-        gas?: string;
-        maxFeePerGas?: string;
-        maxPriorityFeePerGas?: string;
-      };
-      check: {
-        endpoint: string;
-        method: string;
-      };
-    }>;
-  }>;
+  steps: Step[];
   fees: {
     gas: FeeEntry;
     relayer: FeeEntry;
@@ -212,6 +234,52 @@ export async function getIntentStatus(
   return relayApi<IntentStatus>("/intents/status/v3", {
     params: { requestId },
   });
+}
+
+/**
+ * Poll a step item's check endpoint until the step is confirmed.
+ * For approval steps: waits for on-chain confirmation.
+ * For deposit steps: waits for relay network to pick it up (returns once status != "waiting").
+ */
+export async function pollStepCheck(
+  check: { endpoint: string; method: string },
+  stepId: string,
+  options: { maxAttempts?: number; intervalMs?: number } = {}
+): Promise<{ status: string; txHashes?: string[] }> {
+  const maxAttempts = options.maxAttempts || 60; // 5 min at 5s intervals
+  const intervalMs = options.intervalMs || 5000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await relayApi<{
+      status: string;
+      txHashes?: string[];
+      inTxHashes?: string[];
+      details?: string;
+    }>(check.endpoint, { method: check.method as "GET" | "POST" });
+
+    if (res.status === "success") {
+      return { status: "success", txHashes: res.txHashes };
+    }
+    if (res.status === "failure") {
+      throw new Error(res.details || "Step check returned failure");
+    }
+
+    // For approval steps, we need to wait for full confirmation
+    // For deposit steps on the last step, we can return early — the caller
+    // will use get_transaction_status for ongoing tracking
+    if (stepId === "approve") {
+      // Keep polling until success/failure
+    } else {
+      // For deposit/other steps, once status is "pending" or beyond, the relay has picked it up
+      if (res.status === "pending" || res.status === "submitted") {
+        return { status: res.status, txHashes: res.txHashes };
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  throw new Error(`Step check timed out after ${maxAttempts} attempts`);
 }
 
 export interface RelayRequest {
