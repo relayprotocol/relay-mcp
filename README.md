@@ -1,8 +1,6 @@
 # Relay MCP Server
 
-A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Protocol](https://relay.link) — cross-chain bridge and swap tools for AI agents.
-
-**Zero installation required.** Connect any MCP-compatible client (Claude, Cursor, Windsurf, custom agents) to the hosted URL.
+A [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Protocol](https://relay.link) — cross-chain bridge and swap tools for AI agents.
 
 ## Tools
 
@@ -16,23 +14,24 @@ A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for [R
 | `execute_bridge` | Get unsigned transaction data for execution |
 | `get_transaction_status` | Check status of a relay transaction |
 | `get_transaction_history` | Past transactions for a wallet |
+| `get_relay_app_url` | Deep link to the Relay web app with pre-filled parameters |
 
 ## Usage
 
-### Connect to hosted server
+### Claude Desktop / Claude Code
 
 ```json
 {
   "mcpServers": {
     "relay": {
-      "type": "streamable-http",
-      "url": "https://relay-mcp.up.railway.app/mcp"
+      "command": "npx",
+      "args": ["-y", "@relayprotocol/relay-mcp"]
     }
   }
 }
 ```
 
-### Run locally
+### Run from source
 
 ```bash
 npm install
@@ -40,20 +39,17 @@ npm run build
 npm start
 ```
 
-The server starts on `http://localhost:3000/mcp`.
-
 ### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3000` | Server port |
 | `RELAY_API_URL` | `https://api.relay.link` | Relay API base URL |
 | `RELAY_API_KEY` | — | Optional API key for higher rate limits |
 
 ## Architecture
 
-- **Transport:** Stateless Streamable HTTP (MCP spec 2025-03-26)
-- **Runtime:** Node.js + Express
+- **Transport:** Stdio (MCP spec)
+- **Runtime:** Node.js
 - **API:** Direct HTTP calls to `api.relay.link` (no SDK dependency)
 - **Signing:** The server returns unsigned transactions. Your agent's wallet infrastructure (Privy, Dynamic, Turnkey, etc.) handles signing and broadcasting.
 
@@ -70,14 +66,6 @@ User: "Bridge 0.1 ETH from Ethereum to Base"
 6. Agent calls get_transaction_status(requestId) → polls until success
 7. Agent confirms completion to user
 ```
-
-## Deploy to Railway
-
-1. Push to GitHub
-2. Create a new Railway project → Deploy from GitHub
-3. Railway auto-detects the Dockerfile
-4. Set environment variables if needed
-5. Generate a public domain in Railway dashboard
 
 ## License
 
