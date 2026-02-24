@@ -1,0 +1,84 @@
+# Relay MCP Server
+
+A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Protocol](https://relay.link) — cross-chain bridge and swap tools for AI agents.
+
+**Zero installation required.** Connect any MCP-compatible client (Claude, Cursor, Windsurf, custom agents) to the hosted URL.
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| `get_supported_chains` | List supported blockchain networks |
+| `get_supported_tokens` | Search for tokens across chains |
+| `get_bridge_quote` | Quote for bridging same token across chains |
+| `get_swap_quote` | Quote for swapping between different tokens |
+| `estimate_fees` | Fee breakdown for a bridge or swap |
+| `execute_bridge` | Get unsigned transaction data for execution |
+| `get_transaction_status` | Check status of a relay transaction |
+| `get_transaction_history` | Past transactions for a wallet |
+
+## Usage
+
+### Connect to hosted server
+
+```json
+{
+  "mcpServers": {
+    "relay": {
+      "type": "streamable-http",
+      "url": "https://relay-mcp.up.railway.app/mcp"
+    }
+  }
+}
+```
+
+### Run locally
+
+```bash
+npm install
+npm run build
+npm start
+```
+
+The server starts on `http://localhost:3000/mcp`.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | Server port |
+| `RELAY_API_URL` | `https://api.relay.link` | Relay API base URL |
+| `RELAY_API_KEY` | — | Optional API key for higher rate limits |
+
+## Architecture
+
+- **Transport:** Stateless Streamable HTTP (MCP spec 2025-03-26)
+- **Runtime:** Node.js + Express
+- **API:** Direct HTTP calls to `api.relay.link` (no SDK dependency)
+- **Signing:** The server returns unsigned transactions. Your agent's wallet infrastructure (Privy, Dynamic, Turnkey, etc.) handles signing and broadcasting.
+
+## Agent flow example
+
+```
+User: "Bridge 0.1 ETH from Ethereum to Base"
+
+1. Agent calls get_supported_chains → resolves Ethereum=1, Base=8453
+2. Agent calls get_bridge_quote → gets quote with fees and ETA
+3. Agent shows user the quote for confirmation
+4. Agent calls execute_bridge → gets unsigned transaction + requestId
+5. Agent signs and broadcasts tx via wallet infrastructure
+6. Agent calls get_transaction_status(requestId) → polls until success
+7. Agent confirms completion to user
+```
+
+## Deploy to Railway
+
+1. Push to GitHub
+2. Create a new Railway project → Deploy from GitHub
+3. Railway auto-detects the Dockerfile
+4. Set environment variables if needed
+5. Generate a public domain in Railway dashboard
+
+## License
+
+MIT
