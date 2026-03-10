@@ -15,7 +15,7 @@
     "url": "https://github.com/reservoirprotocol/relay-mcp.git"
   },
   "homepage": "https://relay.link",
-  "mcpName": "io.github.reservoirprotocol/relay-mcp",
+  "mcpName": "io.github.relayprotocol/relay-mcp",
   "keywords": [
     "mcp",
     "relay",

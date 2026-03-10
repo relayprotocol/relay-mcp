@@ -3,3 +3,4 @@ dist/
 .env
 *.tsbuildinfo
 .claude
+.mcpregistry_registry_token
