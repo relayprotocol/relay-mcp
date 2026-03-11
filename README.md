@@ -2,7 +2,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Protocol](https://relay.link) — cross-chain bridge and swap tools for AI agents.
 
-[![Install in Cursor](https://cursor.directory/deeplink?type=mcp&url=https://github.com/reservoirprotocol/relay-mcp)](https://cursor.directory/mcp/install?url=https://github.com/reservoirprotocol/relay-mcp)
+[![Install with Cursor](https://img.shields.io/badge/Cursor-Install%20MCP-blue?style=flat&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=relay&type=command&command=npx&args=-y%20%40relayprotocol%2Frelay-mcp)
 
 ## Tools
 
