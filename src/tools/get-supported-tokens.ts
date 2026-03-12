@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getCurrencies } from "../relay-api.js";
+import { mcpCatchError } from "../utils/errors.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -31,12 +32,17 @@ export function register(server: McpServer) {
         .describe("Max number of token groups to return. Defaults to 20."),
     },
     async ({ chainIds, term, verified, limit }) => {
-      const result = await getCurrencies({
-        chainIds,
-        term,
-        verified,
-        limit,
-      });
+      let result;
+      try {
+        result = await getCurrencies({
+          chainIds,
+          term,
+          verified,
+          limit,
+        });
+      } catch (err) {
+        return mcpCatchError(err);
+      }
 
       const tokens = result.map((group) => {
         const first = group[0];

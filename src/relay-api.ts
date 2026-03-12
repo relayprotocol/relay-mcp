@@ -20,7 +20,7 @@ export async function relayApi<T>(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-Relay-Agent": "relay-mcp/0.1.0",
+    "X-Relay-Agent": "relay-mcp/0.3.0",
   };
 
   const apiKey = process.env.RELAY_API_KEY;
@@ -74,8 +74,18 @@ export interface ChainsResponse {
   chains: Chain[];
 }
 
-export async function getChains(): Promise<ChainsResponse> {
-  return relayApi<ChainsResponse>("/chains");
+/**
+ * Fetch supported chains (cached in-memory).
+ * Both chain-resolver and deeplink consume this, so caching here
+ * avoids duplicate HTTP calls from separate consumers.
+ */
+let chainsCachePromise: Promise<ChainsResponse> | null = null;
+export function getChains(): Promise<ChainsResponse> {
+  if (chainsCachePromise) return chainsCachePromise;
+  chainsCachePromise = relayApi<ChainsResponse>("/chains");
+  // Reset on failure so the next call retries instead of returning a cached rejection.
+  chainsCachePromise.catch(() => { chainsCachePromise = null; });
+  return chainsCachePromise;
 }
 
 export interface CurrencyEntry {
@@ -229,4 +239,200 @@ export async function getRequests(
   };
   if (continuation) params.continuation = continuation;
   return relayApi<RequestsResponse>("/requests", { params });
+}
+
+/**
+ * Look up requests by transaction hash.
+ * Useful for debugging: "what request does this tx belong to?"
+ */
+export async function getRequestByHash(
+  hash: string
+): Promise<RequestsResponse> {
+  return relayApi<RequestsResponse>("/requests/v2", {
+    params: { hash },
+  });
+}
+
+// --- v0.3.0 API types and functions ---
+
+export interface ChainHealth {
+  healthy: boolean;
+}
+
+export async function getChainHealth(chainId: number): Promise<ChainHealth> {
+  return relayApi<ChainHealth>("/chains/health", {
+    params: { chainId: String(chainId) },
+  });
+}
+
+export interface LiquidityEntry {
+  symbol: string;
+  address: string;
+  decimals: number;
+  balance: string;
+  amountUsd: string;
+}
+
+export async function getChainLiquidity(
+  chainId: number
+): Promise<LiquidityEntry[]> {
+  return relayApi<LiquidityEntry[]>("/chains/liquidity", {
+    params: { chainId: String(chainId) },
+  });
+}
+
+export interface RouteConfig {
+  enabled: boolean;
+  [key: string]: unknown;
+}
+
+export async function getRouteConfig(
+  originChainId: number,
+  destinationChainId: number
+): Promise<RouteConfig> {
+  return relayApi<RouteConfig>("/config/v2", {
+    params: {
+      originChainId: String(originChainId),
+      destinationChainId: String(destinationChainId),
+    },
+  });
+}
+
+export interface TokenPrice {
+  price: number;
+}
+
+export async function getTokenPrice(
+  chainId: number,
+  address: string
+): Promise<TokenPrice> {
+  return relayApi<TokenPrice>("/currencies/token/price", {
+    params: { chainId: String(chainId), address },
+  });
+}
+
+export interface TokenDetails {
+  chainId: number;
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  price?: number;
+  marketCap?: number;
+  fullyDilutedValuation?: number;
+  liquidity?: number;
+  volume24h?: number;
+  [key: string]: unknown;
+}
+
+export async function getTokenDetails(
+  chainId: number,
+  address: string
+): Promise<TokenDetails> {
+  return relayApi<TokenDetails>(`/chains/${chainId}/currencies/${address}`);
+}
+
+export interface TokenChart {
+  t: number[];
+  o: number[];
+  h: number[];
+  l: number[];
+  c: number[];
+  volume: number[];
+  [key: string]: unknown;
+}
+
+export async function getTokenChart(
+  chainId: number,
+  address: string
+): Promise<TokenChart> {
+  return relayApi<TokenChart>(
+    `/chains/${chainId}/currencies/${address}/chart`
+  );
+}
+
+export interface TrendingToken {
+  chainId: number;
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  vmType?: string;
+}
+
+export async function getTrendingTokens(): Promise<TrendingToken[]> {
+  return relayApi<TrendingToken[]>("/currencies/trending");
+}
+
+export async function getSwapSources(): Promise<string[]> {
+  return relayApi<string[]>("/swap-sources");
+}
+
+export interface AppFeeBalance {
+  currency: string;
+  amount: string;
+  amountFormatted: string;
+  amountUsd: string;
+  [key: string]: unknown;
+}
+
+export interface AppFeeBalancesResponse {
+  balances: AppFeeBalance[];
+}
+
+export async function getAppFeeBalances(
+  wallet: string
+): Promise<AppFeeBalancesResponse> {
+  return relayApi<AppFeeBalancesResponse>(`/app-fees/${wallet}/balances`);
+}
+
+export interface AppFeeClaim {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export interface AppFeeClaimsResponse {
+  claims: AppFeeClaim[];
+}
+
+export async function getAppFeeClaims(
+  wallet: string
+): Promise<AppFeeClaimsResponse> {
+  return relayApi<AppFeeClaimsResponse>(`/app-fees/${wallet}/claims`);
+}
+
+export interface IndexTransactionRequest {
+  chainId: number;
+  txHash: string;
+}
+
+export async function indexTransaction(
+  params: IndexTransactionRequest
+): Promise<unknown> {
+  return relayApi<unknown>("/transactions/index", {
+    method: "POST",
+    body: params,
+  });
+}
+
+/**
+ * Fetch the Relay OpenAPI specification (cached in-memory).
+ * Caches the promise to avoid duplicate fetches on concurrent calls.
+ * Used by get_api_schema for progressive discovery.
+ */
+let specCachePromise: Promise<any> | null = null;
+export function getOpenApiSpec(): Promise<any> {
+  if (specCachePromise) return specCachePromise;
+  specCachePromise = (async () => {
+    const url = `${BASE_URL}/documentation/json`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch OpenAPI spec (${res.status})`);
+    }
+    return res.json();
+  })();
+  // Reset on any failure (network, HTTP, JSON parse) so the next call retries.
+  specCachePromise.catch(() => { specCachePromise = null; });
+  return specCachePromise;
 }

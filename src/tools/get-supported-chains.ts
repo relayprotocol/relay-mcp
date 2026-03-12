@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getChains, type Chain } from "../relay-api.js";
+import { mcpCatchError } from "../utils/errors.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -15,7 +16,12 @@ export function register(server: McpServer) {
         ),
     },
     async ({ vmType }) => {
-      const { chains } = await getChains();
+      let chains: Chain[];
+      try {
+        ({ chains } = await getChains());
+      } catch (err) {
+        return mcpCatchError(err);
+      }
 
       let filtered = chains.filter((c: Chain) => !c.disabled);
       if (vmType) {
@@ -30,7 +36,6 @@ export function register(server: McpServer) {
         vmType: c.vmType,
         nativeCurrency: c.currency.symbol,
         depositEnabled: c.depositEnabled,
-        explorerUrl: c.explorerUrl,
       }));
 
       const summary = `Found ${simplified.length} supported chain${simplified.length !== 1 ? "s" : ""}${vmType ? ` (${vmType})` : ""}. Examples: ${simplified

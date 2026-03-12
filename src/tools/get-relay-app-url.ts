@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { buildRelayAppUrl } from "../deeplink.js";
+import { resolveChainId } from "../utils/chain-resolver.js";
+import { mcpCatchError } from "../utils/errors.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -8,12 +10,12 @@ export function register(server: McpServer) {
     "Generate a deep link to the Relay web app with pre-filled bridge/swap parameters. The user can open this URL in their browser to START a new transaction via the Relay UI. This is NOT a transaction tracking URL — do NOT use it to check on an in-progress transaction. For tracking, use get_transaction_status with the requestId.",
     {
       destinationChainId: z
-        .number()
-        .describe("Destination chain ID (e.g. 8453 for Base). This determines the Relay app page."),
+        .union([z.number(), z.string()])
+        .describe("Destination chain (ID or name like 'base', 'ethereum'). This determines the Relay app page."),
       fromChainId: z
-        .number()
+        .union([z.number(), z.string()])
         .optional()
-        .describe("Origin chain ID (e.g. 1 for Ethereum). If omitted, user picks in the UI."),
+        .describe("Origin chain (ID or name). If omitted, user picks in the UI."),
       fromCurrency: z
         .string()
         .optional()
@@ -36,22 +38,38 @@ export function register(server: McpServer) {
         .describe("Trade type. Defaults to EXACT_INPUT."),
     },
     async ({ destinationChainId, fromChainId, fromCurrency, toCurrency, amount, toAddress, tradeType }) => {
-      const url = await buildRelayAppUrl({
-        destinationChainId,
-        fromChainId,
-        fromCurrency,
-        toCurrency,
-        amount,
-        toAddress,
-        tradeType,
-      });
+      let resolvedDestId: number;
+      let resolvedFromId: number | undefined;
+      try {
+        resolvedDestId = await resolveChainId(destinationChainId);
+        if (fromChainId !== undefined) {
+          resolvedFromId = await resolveChainId(fromChainId);
+        }
+      } catch (err) {
+        return mcpCatchError(err);
+      }
+
+      let url: string | null;
+      try {
+        url = await buildRelayAppUrl({
+          destinationChainId: resolvedDestId,
+          fromChainId: resolvedFromId,
+          fromCurrency,
+          toCurrency,
+          amount,
+          toAddress,
+          tradeType,
+        });
+      } catch (err) {
+        return mcpCatchError(err);
+      }
 
       if (!url) {
         return {
           content: [
             {
               type: "text",
-              text: `Error: Chain ID ${destinationChainId} not found. Use get_supported_chains to find valid chain IDs.`,
+              text: `Error: Chain ID ${resolvedDestId} not found in Relay app routing. Use get_supported_chains to find valid chain IDs.`,
             },
           ],
           isError: true,

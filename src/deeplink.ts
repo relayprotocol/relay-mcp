@@ -1,14 +1,18 @@
 import { getChains } from "./relay-api.js";
 
-let chainNameMap: Map<number, string> | null = null;
+// Cache the promise to avoid duplicate fetches on concurrent calls.
+let chainNameMapPromise: Promise<Map<number, string>> | null = null;
 
-async function getChainNameMap(): Promise<Map<number, string>> {
-  if (chainNameMap) return chainNameMap;
-  const { chains } = await getChains();
-  chainNameMap = new Map(
-    chains.map((c) => [c.id, c.name.toLowerCase().replace(/\s+/g, "-")])
+function getChainNameMap(): Promise<Map<number, string>> {
+  if (chainNameMapPromise) return chainNameMapPromise;
+  chainNameMapPromise = getChains().then(({ chains }) =>
+    new Map(
+      chains.map((c) => [c.id, c.name.toLowerCase().replace(/\s+/g, "-")])
+    )
   );
-  return chainNameMap;
+  // Reset on failure so the next call retries instead of returning a cached rejection.
+  chainNameMapPromise.catch(() => { chainNameMapPromise = null; });
+  return chainNameMapPromise;
 }
 
 export interface DeeplinkParams {

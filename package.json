@@ -1,6 +1,6 @@
 {
   "name": "@relayprotocol/relay-mcp",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "MCP server for Relay Protocol — cross-chain bridge and swap quotes, token search, and fee estimation for AI agents",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,9 @@
   "scripts": {
     "build": "node build.mjs",
     "start": "node dist/index.js",
+    "test": "vitest run --exclude 'src/integration.test.ts'",
+    "test:integration": "vitest run src/integration.test.ts",
+    "test:all": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -37,7 +40,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.18"
   },
   "engines": {
     "node": ">=20"

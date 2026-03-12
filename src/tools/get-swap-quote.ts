@@ -2,19 +2,33 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getQuote } from "../relay-api.js";
 import { buildRelayAppUrl } from "../deeplink.js";
+import { resolveChainId } from "../utils/chain-resolver.js";
+import {
+  validateAddress,
+  validateAmount,
+  validateAddresses,
+  validationError,
+} from "../utils/validators.js";
+import { mcpCatchError } from "../utils/errors.js";
 
 export function register(server: McpServer) {
   server.tool(
     "get_swap_quote",
-    "Get a quote for swapping between different tokens, optionally across chains (e.g. ETH on Ethereum → USDC on Base, or USDC → WETH on the same chain). Returns estimated output amount, fees, and time estimate.",
+    `Get a quote for swapping between DIFFERENT tokens, same-chain or cross-chain (e.g. ETH → USDC on Base, or ETH on Ethereum → USDC on Base).
+
+Use when input and output tokens differ. Works same-chain and cross-chain. For same-token bridging (e.g. ETH on Ethereum → ETH on Base), use get_bridge_quote instead — it's simpler.
+
+Amounts must be in wei (smallest unit). Use get_supported_tokens to look up token decimals first. Examples: 1 USDC = "1000000" (6 decimals), 1 ETH = "1000000000000000000" (18 decimals).
+
+Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb').`,
     {
       originChainId: z
-        .number()
-        .describe("Source chain ID (e.g. 1 for Ethereum)."),
+        .union([z.number(), z.string()])
+        .describe("Source chain ID or name (e.g. 1, 'ethereum', 'eth')."),
       destinationChainId: z
-        .number()
+        .union([z.number(), z.string()])
         .describe(
-          "Destination chain ID. Can be the same as originChainId for same-chain swaps."
+          "Destination chain ID or name (e.g. 8453, 'base'). Can be the same as originChainId for same-chain swaps."
         ),
       originCurrency: z
         .string()
@@ -46,24 +60,54 @@ export function register(server: McpServer) {
       sender,
       recipient,
     }) => {
-      const quote = await getQuote({
-        user: sender,
-        originChainId,
-        destinationChainId,
-        originCurrency,
-        destinationCurrency,
-        amount,
-        recipient,
-      });
+      // Validate inputs
+      const addrErr = validateAddresses(
+        [sender, "sender"],
+        [originCurrency, "originCurrency"],
+        [destinationCurrency, "destinationCurrency"],
+      );
+      if (addrErr) return addrErr;
+      if (recipient) {
+        const recipErr = validateAddress(recipient, "recipient");
+        if (recipErr) return validationError(recipErr);
+      }
+      const amtErr = validateAmount(amount);
+      if (amtErr) return validationError(amtErr);
+
+      let resolvedOrigin: number;
+      let resolvedDest: number;
+      try {
+        [resolvedOrigin, resolvedDest] = await Promise.all([
+          resolveChainId(originChainId),
+          resolveChainId(destinationChainId),
+        ]);
+      } catch (err) {
+        return mcpCatchError(err);
+      }
+
+      let quote;
+      try {
+        quote = await getQuote({
+          user: sender,
+          originChainId: resolvedOrigin,
+          destinationChainId: resolvedDest,
+          originCurrency,
+          destinationCurrency,
+          amount,
+          recipient,
+        });
+      } catch (err) {
+        return mcpCatchError(err);
+      }
 
       const { details, fees } = quote;
-      const isCrossChain = originChainId !== destinationChainId;
+      const isCrossChain = resolvedOrigin !== resolvedDest;
       const action = isCrossChain ? "Cross-chain swap" : "Swap";
-      const summary = `${action}: ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${originChainId}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${destinationChainId}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.`;
+      const summary = `${action}: ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${resolvedOrigin}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${resolvedDest}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.`;
 
       const deeplinkUrl = await buildRelayAppUrl({
-        destinationChainId,
-        fromChainId: originChainId,
+        destinationChainId: resolvedDest,
+        fromChainId: resolvedOrigin,
         fromCurrency: originCurrency,
         toCurrency: destinationCurrency,
         amount: details.currencyIn.amountFormatted,

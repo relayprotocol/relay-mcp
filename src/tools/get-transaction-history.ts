@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getRequests } from "../relay-api.js";
+import { validateAddress, validationError } from "../utils/validators.js";
+import { mcpCatchError } from "../utils/errors.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -21,7 +23,16 @@ export function register(server: McpServer) {
         ),
     },
     async ({ user, limit, cursor }) => {
-      const result = await getRequests(user, limit, cursor);
+      // Validate wallet address
+      const addrErr = validateAddress(user, "user");
+      if (addrErr) return validationError(addrErr);
+
+      let result;
+      try {
+        result = await getRequests(user, limit, cursor);
+      } catch (err) {
+        return mcpCatchError(err);
+      }
 
       const txs = result.requests.map((r) => ({
         requestId: r.id,
