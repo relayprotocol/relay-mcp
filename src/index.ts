@@ -102,8 +102,9 @@ async function main() {
         };
         const server = createServer();
         await server.connect(transport);
-        if (transport.sessionId) transports.set(transport.sessionId, transport);
         await transport.handleRequest(req, res, req.body);
+        // Session ID is generated during handleRequest, so store after
+        if (transport.sessionId) transports.set(transport.sessionId, transport);
       }
     });
 
