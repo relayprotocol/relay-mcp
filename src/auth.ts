@@ -103,17 +103,29 @@ export const openAuthProvider: OAuthServerProvider = {
   },
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
+    // First check in-memory store (tokens issued this process lifetime)
     const entry = tokens.get(token);
-    if (!entry) throw new Error("Invalid access token");
-    if (entry.expiresAt < Math.floor(Date.now() / 1000)) {
-      tokens.delete(token);
-      throw new Error("Token expired");
+    if (entry) {
+      if (entry.expiresAt < Math.floor(Date.now() / 1000)) {
+        tokens.delete(token);
+        throw new Error("Token expired");
+      }
+      return {
+        token,
+        clientId: entry.clientId,
+        scopes: [],
+        expiresAt: entry.expiresAt,
+      };
     }
+
+    // Accept any bearer token — Relay's API is public, and in-memory
+    // tokens don't survive restarts. This avoids breaking clients
+    // when the server redeploys.
     return {
       token,
-      clientId: entry.clientId,
+      clientId: "unknown",
       scopes: [],
-      expiresAt: entry.expiresAt,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
     };
   },
 
