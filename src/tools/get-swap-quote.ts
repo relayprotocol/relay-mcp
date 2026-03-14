@@ -35,12 +35,12 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb').`,
       originCurrency: z
         .string()
         .describe(
-          'Token address to swap from. Use "0x0000000000000000000000000000000000000000" for native ETH.'
+          'Token address to swap from. Use "0x0000000000000000000000000000000000000000" for native ETH on EVM chains. For Solana, use the base58 mint address.'
         ),
       destinationCurrency: z
         .string()
         .describe(
-          'Token address to swap to. Use "0x0000000000000000000000000000000000000000" for native ETH.'
+          'Token address to swap to. Use "0x0000000000000000000000000000000000000000" for native ETH on EVM chains. For Solana, use the base58 mint address.'
         ),
       amount: z
         .string()

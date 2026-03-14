@@ -37,7 +37,7 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb').`,
       currency: z
         .string()
         .describe(
-          'Token address to bridge. Use "0x0000000000000000000000000000000000000000" for native ETH.'
+          'Token address to bridge. Use "0x0000000000000000000000000000000000000000" for native ETH on EVM chains. For Solana, use the base58 mint address.'
         ),
       amount: z
         .string()

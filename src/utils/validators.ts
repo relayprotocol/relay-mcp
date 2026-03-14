@@ -11,32 +11,24 @@ export interface ValidationError {
   suggestion?: string;
 }
 
-/** Validate an EVM address (0x-prefixed, 40 hex chars). */
+/** Validate a wallet or token address across supported VM types. */
 export function validateAddress(
   value: string,
   paramName = "address"
 ): ValidationError | null {
+  // EVM: 0x-prefixed, 40 hex chars
   if (/^0x[0-9a-fA-F]{40}$/.test(value)) return null;
+  // Solana (SVM): base58, 32–44 chars
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value)) return null;
+  // Bitcoin: bech32 (bc1...) or legacy (1.../3...)
+  if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(value)) return null;
+  // Tron (TVM): T-prefixed base58, 34 chars
+  if (/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value)) return null;
 
-  if (!value.startsWith("0x")) {
-    return {
-      param: paramName,
-      value,
-      message: "Address must start with 0x",
-      suggestion: `0x${value}`,
-    };
-  }
-  if (value.length !== 42) {
-    return {
-      param: paramName,
-      value,
-      message: `Address must be 42 characters (got ${value.length})`,
-    };
-  }
   return {
     param: paramName,
     value,
-    message: "Address contains invalid hex characters",
+    message: "Invalid address format. Supported: EVM (0x...), Solana (base58), Bitcoin (bc1.../1.../3...), Tron (T...)",
   };
 }
 
@@ -81,12 +73,23 @@ export function validateAmount(
   };
 }
 
-/** Validate a transaction hash (0x-prefixed, 64 hex chars). */
+/** Validate a transaction hash (EVM: 0x + 64 hex, or Bitcoin: 64 hex without prefix). */
 export function validateTxHash(
   value: string,
   paramName = "hash"
 ): ValidationError | null {
-  return validateHex64(value, "Transaction hash", paramName);
+  // EVM: 0x-prefixed, 64 hex chars
+  if (/^0x[0-9a-fA-F]{64}$/.test(value)) return null;
+  // Bitcoin/non-EVM: 64 hex chars without 0x prefix
+  if (/^[0-9a-fA-F]{64}$/.test(value)) return null;
+  // Solana: base58, 87-88 chars
+  if (/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(value)) return null;
+
+  return {
+    param: paramName,
+    value,
+    message: "Invalid transaction hash. Expected EVM (0x + 64 hex), Bitcoin (64 hex), or Solana (base58).",
+  };
 }
 
 /** MCP error response type used by tool handlers. */

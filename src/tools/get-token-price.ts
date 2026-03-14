@@ -20,7 +20,7 @@ For fee estimates on a specific bridge/swap route, use estimate_fees — this to
       address: z
         .string()
         .describe(
-          'Token contract address (0x-prefixed). Use "0x0000000000000000000000000000000000000000" for native ETH.'
+          'Token contract address. Use "0x0000000000000000000000000000000000000000" for native ETH on EVM chains. For Solana, use the base58 mint address.'
         ),
     },
     async ({ chainId, address }) => {

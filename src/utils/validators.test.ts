@@ -26,29 +26,46 @@ describe("validateAddress", () => {
     expect(validateAddress(VITALIK.toLowerCase())).toBeNull();
   });
 
-  it("rejects address without 0x prefix", () => {
-    const err = validateAddress("d8dA6BF26964aF9D7eEd9e03E53415D37aA96045");
-    expect(err).not.toBeNull();
-    expect(err!.message).toContain("start with 0x");
-    expect(err!.suggestion).toMatch(/^0x/);
+  // Solana addresses
+  it("accepts a Solana base58 address", () => {
+    expect(validateAddress("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")).toBeNull();
   });
 
+  it("accepts a Solana mint address", () => {
+    expect(validateAddress("JAmWYLiv3pGnNz63UTSKSEmJG4pdvvTLCZUcmpSLJA4Q")).toBeNull();
+  });
+
+  // Bitcoin addresses
+  it("accepts a Bitcoin bech32 address", () => {
+    expect(validateAddress("bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8")).toBeNull();
+  });
+
+  it("accepts a Bitcoin legacy address", () => {
+    expect(validateAddress("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")).toBeNull();
+  });
+
+  // Tron addresses
+  it("accepts a Tron address", () => {
+    expect(validateAddress("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")).toBeNull();
+  });
+
+  // Invalid addresses
   it("rejects too-short address", () => {
     const err = validateAddress("0x1234");
     expect(err).not.toBeNull();
-    expect(err!.message).toContain("42 characters");
+    expect(err!.message).toContain("Invalid address format");
   });
 
   it("rejects too-long address", () => {
     const err = validateAddress("0x" + "a".repeat(41));
     expect(err).not.toBeNull();
-    expect(err!.message).toContain("42 characters");
+    expect(err!.message).toContain("Invalid address format");
   });
 
-  it("rejects non-hex characters", () => {
+  it("rejects non-hex characters in EVM address", () => {
     const err = validateAddress("0xZZZZ000000000000000000000000000000000000");
     expect(err).not.toBeNull();
-    expect(err!.message).toContain("invalid hex");
+    expect(err!.message).toContain("Invalid address format");
   });
 
   it("uses custom param name in error", () => {
@@ -150,16 +167,18 @@ describe("validateTxHash", () => {
     expect(validateTxHash(VALID)).toBeNull();
   });
 
-  it("rejects without 0x prefix", () => {
-    const err = validateTxHash("a".repeat(64));
-    expect(err).not.toBeNull();
-    expect(err!.message).toContain("start with 0x");
+  it("accepts Bitcoin tx hash (64 hex without 0x)", () => {
+    expect(validateTxHash("a".repeat(64))).toBeNull();
   });
 
-  it("rejects wrong length", () => {
+  it("accepts Solana tx signature (base58)", () => {
+    expect(validateTxHash("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQU")).toBeNull();
+  });
+
+  it("rejects wrong length hex", () => {
     const err = validateTxHash("0x" + "a".repeat(10));
     expect(err).not.toBeNull();
-    expect(err!.message).toContain("66 characters");
+    expect(err!.message).toContain("Invalid transaction hash");
   });
 
   it("rejects non-hex chars", () => {

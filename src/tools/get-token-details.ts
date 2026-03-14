@@ -73,7 +73,7 @@ When includeChart is true, returns a slimmed price chart (~50 data points with c
         .describe("Chain where the token lives (ID or name)."),
       address: z
         .string()
-        .describe("Token contract address (0x-prefixed)."),
+        .describe("Token contract address. EVM: 0x-prefixed. Solana: base58 mint address."),
       includeChart: z
         .boolean()
         .optional()

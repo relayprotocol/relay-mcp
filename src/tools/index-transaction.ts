@@ -17,7 +17,7 @@ This is a write operation — it tells Relay's indexer to look at a specific tra
         .describe("Chain the transaction is on (ID or name like 'ethereum', 'base')."),
       txHash: z
         .string()
-        .describe("Transaction hash to index (0x-prefixed, 66 chars)."),
+        .describe("Transaction hash to index. EVM: 0x-prefixed 66 chars. Bitcoin: 64 hex chars. Solana: base58 signature."),
     },
     async ({ chainId, txHash }) => {
       const hashErr = validateTxHash(txHash, "txHash");
