@@ -3,9 +3,10 @@ FROM node:20-slim
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-COPY dist/ dist/
+COPY . .
+RUN npm run build
 
 ENV MCP_TRANSPORT=http
 ENV PORT=3000
