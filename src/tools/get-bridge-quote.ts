@@ -59,6 +59,19 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
         .describe(
           "EXACT_INPUT (default): you specify input amount, output varies. EXPECTED_OUTPUT: you specify desired output, input is calculated (allows slippage). EXACT_OUTPUT: you specify exact output required, fails if not deliverable."
         ),
+      useDepositAddress: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Use deposit address flow — returns an address the user can send funds to (e.g. from a CEX or wallet) instead of transaction calldata. No wallet signing needed. The deposit address is reusable for the same origin→destination→currency route. Only supports EXACT_INPUT. Adds ~33k gas for native tokens, ~70k for ERC-20s."
+        ),
+      refundTo: z
+        .string()
+        .optional()
+        .describe(
+          "Address to send refunds to if the bridge fails. Defaults to sender. Useful when sender is a deposit address or contract."
+        ),
       includeSteps: z
         .boolean()
         .optional()
@@ -75,6 +88,8 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       sender,
       recipient,
       tradeType,
+      useDepositAddress,
+      refundTo,
       includeSteps,
     }) => {
       // Validate inputs
@@ -112,13 +127,19 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
         amount,
         tradeType,
         recipient,
+        useDepositAddress: useDepositAddress || undefined,
+        refundTo,
       });
       } catch (err) {
         return mcpCatchError(err);
       }
 
       const { steps, details, fees } = quote;
-      const summary = `Bridge ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${resolvedOrigin}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${resolvedDest}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.`;
+      const depositAddress = steps?.[0]?.depositAddress;
+      const depositSummary = depositAddress
+        ? ` Send funds to deposit address: ${depositAddress}`
+        : "";
+      const summary = `Bridge ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${resolvedOrigin}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${resolvedDest}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.${depositSummary}`;
 
       const deeplinkUrl = await buildRelayAppUrl({
         destinationChainId: resolvedDest,
@@ -161,6 +182,7 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
               totalImpact: details.totalImpact,
               timeEstimateSeconds: details.timeEstimate,
               rate: details.rate,
+              ...(depositAddress ? { depositAddress } : {}),
               ...(includeSteps ? { steps } : { stepsCount: steps.length }),
               relayAppUrl: deeplinkUrl ?? undefined,
             },

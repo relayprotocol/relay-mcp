@@ -60,6 +60,19 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
         .describe(
           "EXACT_INPUT (default): you specify input amount, output varies. EXPECTED_OUTPUT: you specify desired output, input is calculated (allows slippage). EXACT_OUTPUT: you specify exact output required, fails if not deliverable."
         ),
+      useDepositAddress: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "Use deposit address flow — returns an address the user can send funds to instead of transaction calldata. No wallet signing needed. Only supports EXACT_INPUT."
+        ),
+      refundTo: z
+        .string()
+        .optional()
+        .describe(
+          "Address to send refunds to if the swap fails. Defaults to sender."
+        ),
       includeSteps: z
         .boolean()
         .optional()
@@ -77,6 +90,8 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       sender,
       recipient,
       tradeType,
+      useDepositAddress,
+      refundTo,
       includeSteps,
     }) => {
       // Validate inputs
@@ -115,15 +130,21 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
           amount,
           tradeType,
           recipient,
+          useDepositAddress: useDepositAddress || undefined,
+          refundTo,
         });
       } catch (err) {
         return mcpCatchError(err);
       }
 
       const { steps, details, fees } = quote;
+      const depositAddress = steps?.[0]?.depositAddress;
       const isCrossChain = resolvedOrigin !== resolvedDest;
       const action = isCrossChain ? "Cross-chain swap" : "Swap";
-      const summary = `${action}: ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${resolvedOrigin}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${resolvedDest}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.`;
+      const depositSummary = depositAddress
+        ? ` Send funds to deposit address: ${depositAddress}`
+        : "";
+      const summary = `${action}: ${details.currencyIn.amountFormatted} ${details.currencyIn.currency.symbol} (chain ${resolvedOrigin}) → ${details.currencyOut.amountFormatted} ${details.currencyOut.currency.symbol} (chain ${resolvedDest}). Total fees: $${fees.relayer.amountUsd}. ETA: ~${details.timeEstimate}s.${depositSummary}`;
 
       const deeplinkUrl = await buildRelayAppUrl({
         destinationChainId: resolvedDest,
@@ -151,6 +172,7 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
               totalImpact: details.totalImpact,
               timeEstimateSeconds: details.timeEstimate,
               rate: details.rate,
+              ...(depositAddress ? { depositAddress } : {}),
               ...(includeSteps ? { steps } : { stepsCount: steps.length }),
               relayAppUrl: deeplinkUrl ?? undefined,
             },

@@ -144,6 +144,8 @@ export interface QuoteRequest {
   tradeType?: "EXACT_INPUT" | "EXPECTED_OUTPUT" | "EXACT_OUTPUT";
   recipient?: string;
   slippageTolerance?: string;
+  useDepositAddress?: boolean;
+  refundTo?: string;
 }
 
 export interface FeeEntry {
