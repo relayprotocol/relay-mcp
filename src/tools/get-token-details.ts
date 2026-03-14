@@ -73,7 +73,7 @@ When includeChart is true, returns a slimmed price chart (~50 data points with c
         .describe("Chain where the token lives (ID or name)."),
       address: z
         .string()
-        .describe('Token contract address. EVM native: "0x0000000000000000000000000000000000000000". Solana native (SOL): "11111111111111111111111111111111". Bitcoin native (BTC): "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". For other tokens, use the contract/mint address.'),
+        .describe('Token contract address. EVM native: "0x0000000000000000000000000000000000000000". Solana native (SOL): "11111111111111111111111111111111". Bitcoin native (BTC): "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". Hyperliquid native: "0x00000000000000000000000000000000" (32 hex). Lighter native: "0". For other tokens, use the contract/mint address.'),
       includeChart: z
         .boolean()
         .optional()
