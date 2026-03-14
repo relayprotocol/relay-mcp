@@ -2,7 +2,8 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getMultiInputQuote } from "../relay-api.js";
 import { buildRelayAppUrl } from "../deeplink.js";
-import { resolveChainId } from "../utils/chain-resolver.js";
+import { resolveChainId, getChainVmType } from "../utils/chain-resolver.js";
+import { resolveTokenAddress } from "../utils/token-resolver.js";
 import {
   validateAddress,
   validateAmount,
@@ -24,7 +25,7 @@ Amounts must be in each token's smallest unit. Chain IDs can be numbers (8453) o
         .array(
           z.object({
             chainId: z.union([z.number(), z.string()]).describe("Origin chain ID or name."),
-            currency: z.string().describe(`Token address on this origin chain. ${NATIVE_TOKEN_ADDRESSES}`),
+            currency: z.string().describe(`Token address or symbol on this origin chain (e.g. "USDC", "ETH"). ${NATIVE_TOKEN_ADDRESSES}`),
             amount: z.string().describe("Amount in the token's smallest unit."),
           })
         )
@@ -35,7 +36,7 @@ Amounts must be in each token's smallest unit. Chain IDs can be numbers (8453) o
         .describe("Destination chain ID or name (e.g. 8453, 'base')."),
       destinationCurrency: z
         .string()
-        .describe(`Destination token address. ${NATIVE_TOKEN_ADDRESSES}`),
+        .describe(`Destination token address or symbol (e.g. "USDC", "ETH"). ${NATIVE_TOKEN_ADDRESSES}`),
       sender: z.string().describe("Sender wallet address (must hold funds on all origin chains)."),
       recipient: z
         .string()
@@ -84,15 +85,27 @@ Amounts must be in each token's smallest unit. Chain IDs can be numbers (8453) o
       // Resolve all chain IDs in parallel
       let resolvedDest: number;
       let resolvedOrigins: Array<{ chainId: number; currency: string; amount: string }>;
+      let resolvedDestCurrency: string;
       try {
         const [destId, ...originIds] = await Promise.all([
           resolveChainId(destinationChainId),
           ...origins.map((o) => resolveChainId(o.chainId)),
         ]);
         resolvedDest = destId;
+
+        // Resolve token symbols → addresses for each origin + destination
+        const destVm = await getChainVmType(resolvedDest);
+        resolvedDestCurrency = await resolveTokenAddress(destinationCurrency, resolvedDest, destVm);
+        const resolvedCurrencies = await Promise.all(
+          origins.map(async (o, i) => {
+            const vm = await getChainVmType(originIds[i]);
+            return resolveTokenAddress(o.currency, originIds[i], vm);
+          })
+        );
+
         resolvedOrigins = origins.map((o, i) => ({
           chainId: originIds[i],
-          currency: o.currency,
+          currency: resolvedCurrencies[i],
           amount: o.amount,
         }));
       } catch (err) {
@@ -105,7 +118,7 @@ Amounts must be in each token's smallest unit. Chain IDs can be numbers (8453) o
           user: sender,
           origins: resolvedOrigins,
           destinationChainId: resolvedDest,
-          destinationCurrency,
+          destinationCurrency: resolvedDestCurrency,
           tradeType,
           recipient,
           partial: partial || undefined,
@@ -132,7 +145,7 @@ Amounts must be in each token's smallest unit. Chain IDs can be numbers (8453) o
               origins: resolvedOrigins,
               destination: {
                 chainId: resolvedDest,
-                currency: destinationCurrency,
+                currency: resolvedDestCurrency,
               },
               amountOut: details.currencyOut.amountFormatted,
               amountOutUsd: details.currencyOut.amountUsd,

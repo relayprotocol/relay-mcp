@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getQuote } from "../relay-api.js";
-import { resolveChainId } from "../utils/chain-resolver.js";
+import { resolveChainId, getChainVmType } from "../utils/chain-resolver.js";
+import { resolveTokenAddress } from "../utils/token-resolver.js";
 import {
+  validateAddress,
   validateAmount,
-  validateAddresses,
   validationError,
 } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
@@ -23,10 +24,10 @@ Amounts must be in the token's smallest unit (wei for ETH, satoshis for BTC, lam
       destinationChainId: z.union([z.number(), z.string()]).describe("Destination chain ID or name (e.g. 8453, 'base')."),
       originCurrency: z
         .string()
-        .describe(`Origin token address. ${NATIVE_TOKEN_ADDRESSES}`),
+        .describe(`Origin token address or symbol (e.g. "USDC", "ETH"). ${NATIVE_TOKEN_ADDRESSES}`),
       destinationCurrency: z
         .string()
-        .describe(`Destination token address. ${NATIVE_TOKEN_ADDRESSES}`),
+        .describe(`Destination token address or symbol (e.g. "USDC", "ETH"). ${NATIVE_TOKEN_ADDRESSES}`),
       amount: z
         .string()
         .describe("Amount in the origin token's smallest unit."),
@@ -57,13 +58,10 @@ Amounts must be in the token's smallest unit (wei for ETH, satoshis for BTC, lam
         sender || "0x0000000000000000000000000000000000000001";
 
       // Validate inputs
-      const addrValidations: [string, string][] = [
-        [originCurrency, "originCurrency"],
-        [destinationCurrency, "destinationCurrency"],
-      ];
-      if (sender) addrValidations.push([sender, "sender"]);
-      const addrErr = validateAddresses(...addrValidations);
-      if (addrErr) return addrErr;
+      if (sender) {
+        const senderErr = validateAddress(sender, "sender");
+        if (senderErr) return validationError(senderErr);
+      }
       const amtErr = validateAmount(amount);
       if (amtErr) return validationError(amtErr);
 
@@ -78,14 +76,30 @@ Amounts must be in the token's smallest unit (wei for ETH, satoshis for BTC, lam
         return mcpCatchError(err);
       }
 
+      // Resolve token symbols → addresses if needed
+      let resolvedOriginCurrency: string;
+      let resolvedDestCurrency: string;
+      try {
+        const [originVm, destVm] = await Promise.all([
+          getChainVmType(resolvedOrigin),
+          getChainVmType(resolvedDest),
+        ]);
+        [resolvedOriginCurrency, resolvedDestCurrency] = await Promise.all([
+          resolveTokenAddress(originCurrency, resolvedOrigin, originVm),
+          resolveTokenAddress(destinationCurrency, resolvedDest, destVm),
+        ]);
+      } catch (err) {
+        return mcpCatchError(err);
+      }
+
       let quote;
       try {
         quote = await getQuote({
           user: effectiveSender,
           originChainId: resolvedOrigin,
           destinationChainId: resolvedDest,
-          originCurrency,
-          destinationCurrency,
+          originCurrency: resolvedOriginCurrency,
+          destinationCurrency: resolvedDestCurrency,
           amount,
           tradeType,
         });

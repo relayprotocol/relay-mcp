@@ -1,10 +1,21 @@
 const BASE_URL = process.env.RELAY_API_URL || "https://api.relay.link";
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_RETRIES = 2;
+const RETRY_BASE_MS = 500;
 
 interface RequestOptions {
   method?: "GET" | "POST";
   body?: unknown;
   params?: Record<string, string>;
+}
+
+/** Returns true for status codes that are safe to retry. */
+function isRetryable(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function relayApi<T>(
@@ -29,39 +40,68 @@ export async function relayApi<T>(
     headers["x-api-key"] = apiKey;
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let lastError: Error | undefined;
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    });
-  } catch (err: unknown) {
-    clearTimeout(timer);
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`Relay API ${method} ${path} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      // Exponential backoff: 500ms, 1000ms. Respect Retry-After header for 429.
+      const backoff = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+      await sleep(backoff);
     }
-    throw err;
-  }
-  clearTimeout(timer);
 
-  if (!res.ok) {
-    const text = await res.text();
-    let message: string;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    let res: Response;
     try {
-      const json = JSON.parse(text);
-      message = json.message || json.error || text;
-    } catch {
-      message = text;
+      res = await fetch(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (err: unknown) {
+      clearTimeout(timer);
+      if (err instanceof Error && err.name === "AbortError") {
+        lastError = new Error(`Relay API ${method} ${path} timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+        continue; // retry timeouts
+      }
+      // Network errors are retryable
+      lastError = err instanceof Error ? err : new Error(String(err));
+      continue;
     }
-    throw new Error(`Relay API ${method} ${path} failed (${res.status}): ${message}`);
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const text = await res.text();
+      let message: string;
+      try {
+        const json = JSON.parse(text);
+        message = json.message || json.error || text;
+      } catch {
+        message = text;
+      }
+      lastError = new Error(`Relay API ${method} ${path} failed (${res.status}): ${message}`);
+
+      if (isRetryable(res.status) && attempt < MAX_RETRIES) {
+        // Check Retry-After header for 429
+        const retryAfter = res.headers.get("Retry-After");
+        if (retryAfter) {
+          const retryMs = parseInt(retryAfter, 10) * 1000;
+          if (!isNaN(retryMs) && retryMs > 0 && retryMs <= 30_000) {
+            await sleep(retryMs);
+          }
+        }
+        continue;
+      }
+
+      throw lastError;
+    }
+
+    return res.json() as Promise<T>;
   }
 
-  return res.json() as Promise<T>;
+  throw lastError || new Error(`Relay API ${method} ${path} failed after ${MAX_RETRIES + 1} attempts`);
 }
 
 // --- API types ---

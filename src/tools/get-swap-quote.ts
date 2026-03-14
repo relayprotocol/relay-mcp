@@ -2,11 +2,11 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getQuote } from "../relay-api.js";
 import { buildRelayAppUrl } from "../deeplink.js";
-import { resolveChainId } from "../utils/chain-resolver.js";
+import { resolveChainId, getChainVmType } from "../utils/chain-resolver.js";
+import { resolveTokenAddress } from "../utils/token-resolver.js";
 import {
   validateAddress,
   validateAmount,
-  validateAddresses,
   validationError,
 } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
@@ -36,12 +36,12 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       originCurrency: z
         .string()
         .describe(
-          `Token address to swap from. ${NATIVE_TOKEN_ADDRESSES}`
+          `Token address or symbol to swap from. Symbols like "ETH", "USDC", "USDT", "WETH" are resolved automatically. ${NATIVE_TOKEN_ADDRESSES}`
         ),
       destinationCurrency: z
         .string()
         .describe(
-          `Token address to swap to. ${NATIVE_TOKEN_ADDRESSES}`
+          `Token address or symbol to swap to. Symbols like "ETH", "USDC", "USDT", "WETH" are resolved automatically. ${NATIVE_TOKEN_ADDRESSES}`
         ),
       amount: z
         .string()
@@ -94,13 +94,9 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       refundTo,
       includeSteps,
     }) => {
-      // Validate inputs
-      const addrErr = validateAddresses(
-        [sender, "sender"],
-        [originCurrency, "originCurrency"],
-        [destinationCurrency, "destinationCurrency"],
-      );
-      if (addrErr) return addrErr;
+      // Validate sender address
+      const senderErr = validateAddress(sender, "sender");
+      if (senderErr) return validationError(senderErr);
       if (recipient) {
         const recipErr = validateAddress(recipient, "recipient");
         if (recipErr) return validationError(recipErr);
@@ -119,14 +115,30 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
         return mcpCatchError(err);
       }
 
+      // Resolve token symbols → addresses if needed
+      let resolvedOriginCurrency: string;
+      let resolvedDestCurrency: string;
+      try {
+        const [originVm, destVm] = await Promise.all([
+          getChainVmType(resolvedOrigin),
+          getChainVmType(resolvedDest),
+        ]);
+        [resolvedOriginCurrency, resolvedDestCurrency] = await Promise.all([
+          resolveTokenAddress(originCurrency, resolvedOrigin, originVm),
+          resolveTokenAddress(destinationCurrency, resolvedDest, destVm),
+        ]);
+      } catch (err) {
+        return mcpCatchError(err);
+      }
+
       let quote;
       try {
         quote = await getQuote({
           user: sender,
           originChainId: resolvedOrigin,
           destinationChainId: resolvedDest,
-          originCurrency,
-          destinationCurrency,
+          originCurrency: resolvedOriginCurrency,
+          destinationCurrency: resolvedDestCurrency,
           amount,
           tradeType,
           recipient,
@@ -149,8 +161,8 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       const deeplinkUrl = await buildRelayAppUrl({
         destinationChainId: resolvedDest,
         fromChainId: resolvedOrigin,
-        fromCurrency: originCurrency,
-        toCurrency: destinationCurrency,
+        fromCurrency: resolvedOriginCurrency,
+        toCurrency: resolvedDestCurrency,
         amount: details.currencyIn.amountFormatted,
         toAddress: recipient,
       });

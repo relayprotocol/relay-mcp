@@ -9,6 +9,7 @@ interface ChainEntry {
   id: number;
   name: string;
   displayName: string;
+  vmType: string;
 }
 
 // Cache the promise (not the result) to avoid thundering herd on concurrent calls.
@@ -22,6 +23,7 @@ function loadChains(): Promise<ChainEntry[]> {
       id: c.id,
       name: c.name,
       displayName: c.displayName,
+      vmType: c.vmType,
     }))
   );
   // Reset on failure so the next call retries instead of returning a cached rejection.
@@ -105,6 +107,17 @@ export async function resolveChainId(
     .join("\n");
 
   throw new Error(`Unknown chain "${input}". Did you mean:\n${suggestions}`);
+}
+
+/**
+ * Get the VM type for a chain ID (e.g. "evm", "svm", "bvm").
+ * Returns undefined if not found.
+ */
+export async function getChainVmType(
+  chainId: number
+): Promise<string | undefined> {
+  const chains = await loadChains();
+  return chains.find((c) => c.id === chainId)?.vmType;
 }
 
 /** Dice coefficient string similarity. */

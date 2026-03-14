@@ -27,6 +27,7 @@ import { register as registerGetSwapSources } from "./tools/get-swap-sources.js"
 import { register as registerGetAppFees } from "./tools/get-app-fees.js";
 import { register as registerIndexTransaction } from "./tools/index-transaction.js";
 import { register as registerGetMultiInputQuote } from "./tools/get-multi-input-quote.js";
+import { register as registerConvertAmount } from "./tools/convert-amount.js";
 
 function createServer() {
   const server = new McpServer({
@@ -97,6 +98,7 @@ function createServer() {
   registerGetAppFees(server);
   registerIndexTransaction(server);
   registerGetMultiInputQuote(server);
+  registerConvertAmount(server);
 
   return server;
 }
@@ -175,7 +177,7 @@ async function main() {
 
     // Health check (no auth needed)
     app.get("/health", (_req, res) => {
-      res.json({ status: "ok", tools: 16, version: "0.3.0", sessions: transports.size });
+      res.json({ status: "ok", tools: 18, version: "0.3.0", sessions: transports.size });
     });
 
     app.listen(port, "0.0.0.0", () => {

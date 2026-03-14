@@ -16,6 +16,7 @@ vi.mock("../relay-api.js", () => ({
   getQuote: vi.fn(),
   getIntentStatus: vi.fn(),
   getRequestByHash: vi.fn(),
+  getRequestById: vi.fn(),
   getRequests: vi.fn(),
   getOpenApiSpec: vi.fn(),
   getCurrencies: vi.fn(),
@@ -35,6 +36,11 @@ vi.mock("../relay-api.js", () => ({
 
 vi.mock("../utils/chain-resolver.js", () => ({
   resolveChainId: vi.fn(),
+  getChainVmType: vi.fn(),
+}));
+
+vi.mock("../utils/token-resolver.js", () => ({
+  resolveTokenAddress: vi.fn(),
 }));
 
 vi.mock("../deeplink.js", () => ({
@@ -46,6 +52,7 @@ import {
   getQuote,
   getIntentStatus,
   getRequestByHash,
+  getRequestById,
   getRequests,
   getOpenApiSpec,
   getCurrencies,
@@ -62,7 +69,8 @@ import {
   getAppFeeClaims,
   indexTransaction,
 } from "../relay-api.js";
-import { resolveChainId } from "../utils/chain-resolver.js";
+import { resolveChainId, getChainVmType } from "../utils/chain-resolver.js";
+import { resolveTokenAddress } from "../utils/token-resolver.js";
 import { buildRelayAppUrl } from "../deeplink.js";
 
 // Import tool registration functions
@@ -188,6 +196,15 @@ beforeEach(() => {
     if (id) return id;
     throw new Error(`Unknown chain "${input}"`);
   });
+  // Default: return "evm" for all chains
+  vi.mocked(getChainVmType).mockResolvedValue("evm");
+  // Default: pass through valid-looking inputs, throw for obvious junk
+  vi.mocked(resolveTokenAddress).mockImplementation(async (input) => {
+    if (/^0x[0-9a-fA-F]+$/i.test(input) || ["ETH", "USDC", "USDT", "WETH"].includes(input.toUpperCase())) {
+      return input;
+    }
+    throw new Error(`Token "${input}" not found`);
+  });
   vi.mocked(buildRelayAppUrl).mockResolvedValue("https://relay.link/bridge/base?fromChainId=1");
   vi.mocked(getQuote).mockResolvedValue(MOCK_QUOTE as any);
 });
@@ -231,7 +248,7 @@ describe("get_bridge_quote", () => {
     expect(result.content[0].text).toContain("Validation error");
   });
 
-  it("rejects invalid currency address", async () => {
+  it("rejects invalid currency", async () => {
     const result = await handler({
       originChainId: 1,
       destinationChainId: 8453,
@@ -241,7 +258,7 @@ describe("get_bridge_quote", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Validation error");
+    expect(result.content[0].text).toContain("not found");
   });
 
   it("rejects invalid amount (decimal)", async () => {
@@ -371,6 +388,7 @@ describe("get_bridge_quote", () => {
       currency: VALID_ADDRESS,
       amount: "1000000000000000000",
       sender: SENDER,
+      includeSteps: true,
     });
 
     const data = JSON.parse(result.content[1].text);
@@ -458,7 +476,7 @@ describe("get_swap_quote", () => {
     expect(result.content[0].text).toMatch(/^Swap:/);
   });
 
-  it("validates all three currency addresses", async () => {
+  it("rejects invalid token symbol", async () => {
     const result = await handler({
       originChainId: 1,
       destinationChainId: 8453,
@@ -469,7 +487,7 @@ describe("get_swap_quote", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("originCurrency");
+    expect(result.content[0].text).toContain("not found");
   });
 
   it("rejects invalid amount", async () => {
@@ -493,6 +511,7 @@ describe("get_swap_quote", () => {
       destinationCurrency: VALID_ADDRESS,
       amount: "1000000000000000000",
       sender: SENDER,
+      includeSteps: true,
     });
 
     const data = JSON.parse(result.content[1].text);
@@ -592,39 +611,50 @@ describe("get_transaction_status", () => {
   const VALID_REQUEST_ID = "0x" + "a".repeat(64);
   const VALID_TX_HASH = "0x" + "b".repeat(64);
 
-  beforeEach(() => {
-    vi.mocked(getIntentStatus).mockResolvedValue({
-      status: "success",
-      txHashes: ["0x" + "c".repeat(64)],
-      originChainId: 1,
-      destinationChainId: 8453,
-    });
-    vi.mocked(getRequestByHash).mockResolvedValue({
-      requests: [
-        {
-          id: VALID_REQUEST_ID,
-          status: "success",
-          user: SENDER,
-          recipient: SENDER,
-          data: {
-            inTxs: [{ hash: VALID_TX_HASH, chainId: 1, timestamp: 1700000000 }],
-            outTxs: [{ hash: "0x" + "c".repeat(64), chainId: 8453, timestamp: 1700000015 }],
-            currency: "ETH",
-            timeEstimate: 15,
-          },
-          createdAt: "2024-01-01T00:00:00Z",
-          updatedAt: "2024-01-01T00:00:15Z",
+  const MOCK_REQUEST = {
+    id: VALID_REQUEST_ID,
+    status: "success",
+    user: SENDER,
+    recipient: SENDER,
+    data: {
+      inTxs: [{ hash: VALID_TX_HASH, chainId: 1, timestamp: 1700000000 }],
+      outTxs: [{ hash: "0x" + "c".repeat(64), chainId: 8453, timestamp: 1700000015 }],
+      currency: "ETH",
+      timeEstimate: 15,
+      metadata: {
+        currencyIn: {
+          currency: { chainId: 1, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
+          amount: "1000000000000000000",
+          amountFormatted: "1.0",
+          amountUsd: "3000.00",
         },
-      ],
-    });
+        currencyOut: {
+          currency: { chainId: 8453, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
+          amount: "999000000000000000",
+          amountFormatted: "0.999",
+          amountUsd: "2997.00",
+        },
+      },
+    },
+    createdAt: "2024-01-01T00:00:00Z",
+    updatedAt: "2024-01-01T00:00:15Z",
+  };
+
+  function mockRequest(overrides: Record<string, unknown> = {}) {
+    return { requests: [{ ...MOCK_REQUEST, ...overrides }] };
+  }
+
+  beforeEach(() => {
+    vi.mocked(getRequestById).mockResolvedValue(mockRequest() as any);
+    vi.mocked(getRequestByHash).mockResolvedValue(mockRequest() as any);
   });
 
   it("returns status for a valid requestId", async () => {
     const result = await handler({ requestId: VALID_REQUEST_ID });
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain("complete");
-    expect(vi.mocked(getIntentStatus)).toHaveBeenCalledWith(VALID_REQUEST_ID);
+    expect(result.content[0].text).toContain("Complete");
+    expect(vi.mocked(getRequestById)).toHaveBeenCalledWith(VALID_REQUEST_ID);
   });
 
   it("resolves txHash to requestId then gets status", async () => {
@@ -632,7 +662,6 @@ describe("get_transaction_status", () => {
 
     expect(result.isError).toBeUndefined();
     expect(vi.mocked(getRequestByHash)).toHaveBeenCalledWith(VALID_TX_HASH);
-    expect(vi.mocked(getIntentStatus)).toHaveBeenCalledWith(VALID_REQUEST_ID);
   });
 
   it("requires either requestId or txHash", async () => {
@@ -677,8 +706,8 @@ describe("get_transaction_status", () => {
   });
 
   it("handles API error on status lookup", async () => {
-    vi.mocked(getIntentStatus).mockRejectedValueOnce(
-      new Error("Relay API GET /intents/status/v3 failed (404): not found")
+    vi.mocked(getRequestById).mockRejectedValueOnce(
+      new Error("Relay API GET /requests/v2 failed (404): not found")
     );
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
@@ -688,31 +717,33 @@ describe("get_transaction_status", () => {
   });
 
   it("describes pending status", async () => {
-    vi.mocked(getIntentStatus).mockResolvedValueOnce({ status: "pending" });
+    vi.mocked(getRequestById).mockResolvedValueOnce(mockRequest({ status: "pending" }) as any);
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
-    expect(result.content[0].text).toContain("being processed");
+    expect(result.content[0].text).toContain("Processing");
   });
 
   it("describes waiting status", async () => {
-    vi.mocked(getIntentStatus).mockResolvedValueOnce({ status: "waiting" });
+    vi.mocked(getRequestById).mockResolvedValueOnce(mockRequest({ status: "waiting" }) as any);
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
-    expect(result.content[0].text).toContain("waiting");
+    expect(result.content[0].text).toContain("Waiting");
   });
 
   it("describes failure status", async () => {
-    vi.mocked(getIntentStatus).mockResolvedValueOnce({ status: "failure" });
+    vi.mocked(getRequestById).mockResolvedValueOnce(
+      mockRequest({ status: "failure", data: { ...MOCK_REQUEST.data, failReason: "solver timeout" } }) as any
+    );
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
-    expect(result.content[0].text).toContain("failed");
+    expect(result.content[0].text).toContain("Failed");
   });
 
   it("describes refund status", async () => {
-    vi.mocked(getIntentStatus).mockResolvedValueOnce({ status: "refund" });
+    vi.mocked(getRequestById).mockResolvedValueOnce(mockRequest({ status: "refund" }) as any);
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
-    expect(result.content[0].text).toContain("refunded");
+    expect(result.content[0].text).toContain("Refunded");
   });
 });
 
@@ -992,6 +1023,11 @@ describe("check_chain_status", () => {
     vi.mocked(getChainHealth).mockResolvedValue(MOCK_HEALTH as any);
     vi.mocked(getChainLiquidity).mockResolvedValue(MOCK_LIQUIDITY as any);
     vi.mocked(getRouteConfig).mockResolvedValue(MOCK_ROUTE_CONFIG as any);
+    vi.mocked(getChains).mockResolvedValue({
+      chains: [
+        { id: 8453, name: "base", displayName: "Base", vmType: "evm", solverAddresses: ["0xsolver1"], contracts: { relayReceiver: "0xreceiver" } },
+      ],
+    } as any);
   });
 
   it("returns health and liquidity for a chain", async () => {

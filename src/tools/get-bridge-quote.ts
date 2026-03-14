@@ -2,11 +2,11 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getQuote } from "../relay-api.js";
 import { buildRelayAppUrl } from "../deeplink.js";
-import { resolveChainId } from "../utils/chain-resolver.js";
+import { resolveChainId, getChainVmType } from "../utils/chain-resolver.js";
+import { resolveTokenAddress } from "../utils/token-resolver.js";
 import {
   validateAddress,
   validateAmount,
-  validateAddresses,
   validationError,
 } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
@@ -38,7 +38,7 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       currency: z
         .string()
         .describe(
-          `Token address to bridge. ${NATIVE_TOKEN_ADDRESSES}`
+          `Token address or symbol to bridge. Symbols like "ETH", "USDC", "USDT", "WETH" are resolved automatically. ${NATIVE_TOKEN_ADDRESSES}`
         ),
       amount: z
         .string()
@@ -92,12 +92,9 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       refundTo,
       includeSteps,
     }) => {
-      // Validate inputs
-      const addrErr = validateAddresses(
-        [sender, "sender"],
-        [currency, "currency"],
-      );
-      if (addrErr) return addrErr;
+      // Validate sender address
+      const senderErr = validateAddress(sender, "sender");
+      if (senderErr) return validationError(senderErr);
       if (recipient) {
         const recipErr = validateAddress(recipient, "recipient");
         if (recipErr) return validationError(recipErr);
@@ -116,14 +113,23 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
         return mcpCatchError(err);
       }
 
+      // Resolve token symbol → address if needed
+      let resolvedCurrency: string;
+      try {
+        const vmType = await getChainVmType(resolvedOrigin);
+        resolvedCurrency = await resolveTokenAddress(currency, resolvedOrigin, vmType);
+      } catch (err) {
+        return mcpCatchError(err);
+      }
+
       let quote;
       try {
         quote = await getQuote({
         user: sender,
         originChainId: resolvedOrigin,
         destinationChainId: resolvedDest,
-        originCurrency: currency,
-        destinationCurrency: currency,
+        originCurrency: resolvedCurrency,
+        destinationCurrency: resolvedCurrency,
         amount,
         tradeType,
         recipient,
@@ -144,8 +150,8 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       const deeplinkUrl = await buildRelayAppUrl({
         destinationChainId: resolvedDest,
         fromChainId: resolvedOrigin,
-        fromCurrency: currency,
-        toCurrency: currency,
+        fromCurrency: resolvedCurrency,
+        toCurrency: resolvedCurrency,
         amount: details.currencyIn.amountFormatted,
         toAddress: recipient,
       });
