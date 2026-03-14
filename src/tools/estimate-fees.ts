@@ -8,6 +8,7 @@ import {
   validationError,
 } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
+import { NATIVE_TOKEN_ADDRESSES } from "../utils/descriptions.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -22,10 +23,10 @@ Amounts must be in the token's smallest unit (wei for ETH, satoshis for BTC, lam
       destinationChainId: z.union([z.number(), z.string()]).describe("Destination chain ID or name (e.g. 8453, 'base')."),
       originCurrency: z
         .string()
-        .describe('Origin token address. EVM native: "0x0000000000000000000000000000000000000000". Solana native: "11111111111111111111111111111111". Bitcoin native: "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". Hyperliquid native: "0x00000000000000000000000000000000". Lighter native: "0".'),
+        .describe(`Origin token address. ${NATIVE_TOKEN_ADDRESSES}`),
       destinationCurrency: z
         .string()
-        .describe('Destination token address. EVM native: "0x0000000000000000000000000000000000000000". Solana native: "11111111111111111111111111111111". Bitcoin native: "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". Hyperliquid native: "0x00000000000000000000000000000000". Lighter native: "0".'),
+        .describe(`Destination token address. ${NATIVE_TOKEN_ADDRESSES}`),
       amount: z
         .string()
         .describe("Amount in the origin token's smallest unit."),

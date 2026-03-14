@@ -10,6 +10,7 @@ import {
   validationError,
 } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
+import { NATIVE_TOKEN_ADDRESSES } from "../utils/descriptions.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -37,7 +38,7 @@ Chain IDs can be numbers (8453) or names ('base', 'ethereum', 'arb', 'bitcoin', 
       currency: z
         .string()
         .describe(
-          'Token address to bridge. EVM native: "0x0000000000000000000000000000000000000000". Solana native (SOL): "11111111111111111111111111111111". Bitcoin native (BTC): "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". Hyperliquid native: "0x00000000000000000000000000000000" (32 hex). Lighter native: "0". For other tokens, use the contract/mint address.'
+          `Token address to bridge. ${NATIVE_TOKEN_ADDRESSES}`
         ),
       amount: z
         .string()

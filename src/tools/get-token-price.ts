@@ -4,6 +4,7 @@ import { getTokenPrice } from "../relay-api.js";
 import { resolveChainId } from "../utils/chain-resolver.js";
 import { validateAddress, validationError } from "../utils/validators.js";
 import { mcpCatchError } from "../utils/errors.js";
+import { NATIVE_TOKEN_ADDRESSES } from "../utils/descriptions.js";
 
 export function register(server: McpServer) {
   server.tool(
@@ -20,7 +21,7 @@ For fee estimates on a specific bridge/swap route, use estimate_fees — this to
       address: z
         .string()
         .describe(
-          'Token contract address. EVM native: "0x0000000000000000000000000000000000000000". Solana native (SOL): "11111111111111111111111111111111". Bitcoin native (BTC): "bc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqmql8k8". Hyperliquid native: "0x00000000000000000000000000000000" (32 hex). Lighter native: "0". For other tokens, use the contract/mint address.'
+          `Token contract address. ${NATIVE_TOKEN_ADDRESSES}`
         ),
     },
     async ({ chainId, address }) => {
