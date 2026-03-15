@@ -14,14 +14,21 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { relayApi } from "../relay-api.js";
 import { mcpCatchError } from "../utils/errors.js";
 
-/** Endpoints that should never be callable via this tool. */
+/**
+ * Endpoints that should never be callable via this tool.
+ * /execute/* endpoints require signed transaction data and wallet interaction
+ * which MCP servers should not handle — execution belongs in the client/wallet layer.
+ */
 const BLOCKED_PATTERNS = [
+  "/execute",
+  "/fast-fill",
   "/admin",
   "/lives",
   "/loadforge",
   "/conduit",
   "/provision",
   "/wallets/screen",
+  "/sanctioned",
 ];
 
 function isBlocked(path: string): boolean {
