@@ -20,6 +20,7 @@ vi.mock("../relay-api.js", () => ({
   getRequests: vi.fn(),
   getOpenApiSpec: vi.fn(),
   getCurrencies: vi.fn(),
+  relayApi: vi.fn(),
   // v0.3.0 API functions
   getChainHealth: vi.fn(),
   getChainLiquidity: vi.fn(),
@@ -57,6 +58,7 @@ import {
   getRequests,
   getOpenApiSpec,
   getCurrencies,
+  relayApi,
   // v0.3.0 API functions
   getChainHealth,
   getChainLiquidity,
@@ -92,6 +94,7 @@ import { register as registerGetSwapSources } from "./get-swap-sources.js";
 import { register as registerGetAppFees } from "./get-app-fees.js";
 import { register as registerIndexTransaction } from "./index-transaction.js";
 import { register as registerGetUserBalance } from "./get-user-balance.js";
+import { register as registerExecuteApiCall } from "./execute-api-call.js";
 
 // ─── Helper: extract the handler from McpServer ───────────────────
 
@@ -1625,5 +1628,135 @@ describe("get_user_balance", () => {
 
     expect(result.isError).toBeUndefined();
     expect(result.content[0].text).toContain("Balance data not available");
+  });
+});
+
+// ─── execute_api_call ──────────────────────────────────────────────
+
+describe("execute_api_call", () => {
+  const handler = captureToolHandler(registerExecuteApiCall);
+
+  beforeEach(() => {
+    vi.mocked(relayApi).mockReset();
+  });
+
+  it("calls GET endpoint and returns response", async () => {
+    vi.mocked(relayApi).mockResolvedValueOnce({ chains: [{ id: 1 }] });
+
+    const result = await handler({ method: "GET", path: "/chains" });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[1].text).toContain('"chains"');
+    expect(vi.mocked(relayApi)).toHaveBeenCalledWith("/chains", {
+      method: "GET",
+      params: undefined,
+      body: undefined,
+    });
+  });
+
+  it("calls POST endpoint with body", async () => {
+    vi.mocked(relayApi).mockResolvedValueOnce({ fees: { gas: "100" } });
+
+    const result = await handler({
+      method: "POST",
+      path: "/quote/v2",
+      body: { user: "0x123", originChainId: 8453 },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[1].text).toContain('"fees"');
+    expect(vi.mocked(relayApi)).toHaveBeenCalledWith("/quote/v2", {
+      method: "POST",
+      params: undefined,
+      body: { user: "0x123", originChainId: 8453 },
+    });
+  });
+
+  it("passes query params for GET requests", async () => {
+    vi.mocked(relayApi).mockResolvedValueOnce([]);
+
+    const result = await handler({
+      method: "GET",
+      path: "/requests/v2",
+      params: { user: "0xabc", limit: "10" },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(vi.mocked(relayApi)).toHaveBeenCalledWith("/requests/v2", {
+      method: "GET",
+      params: { user: "0xabc", limit: "10" },
+      body: undefined,
+    });
+  });
+
+  it("blocks /execute/swap endpoint", async () => {
+    const result = await handler({ method: "POST", path: "/execute/swap" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+    expect(vi.mocked(relayApi)).not.toHaveBeenCalled();
+  });
+
+  it("blocks /execute/bridge endpoint", async () => {
+    const result = await handler({ method: "POST", path: "/execute/bridge" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+  });
+
+  it("blocks /fast-fill endpoint", async () => {
+    const result = await handler({ method: "POST", path: "/fast-fill" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+  });
+
+  it("blocks /admin endpoints", async () => {
+    const result = await handler({ method: "GET", path: "/admin/users" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+  });
+
+  it("blocks /sanctioned endpoint", async () => {
+    const result = await handler({ method: "GET", path: "/sanctioned" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+  });
+
+  it("rejects path without leading slash", async () => {
+    const result = await handler({ method: "GET", path: "chains" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("must start with '/'");
+  });
+
+  it("handles API errors gracefully", async () => {
+    const err = new Error("Relay API GET /bad failed (404): not found");
+    vi.mocked(relayApi).mockRejectedValueOnce(err);
+
+    const result = await handler({ method: "GET", path: "/bad" });
+
+    expect(result.isError).toBe(true);
+  });
+
+  it("truncates responses over 50KB", async () => {
+    const largeResponse = { data: "x".repeat(60_000) };
+    vi.mocked(relayApi).mockResolvedValueOnce(largeResponse);
+
+    const result = await handler({ method: "GET", path: "/chains" });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.content[1].text).toContain("truncated");
+    expect(result.content[1].text.length).toBeLessThan(60_000);
+  });
+
+  it("reports array length in summary", async () => {
+    vi.mocked(relayApi).mockResolvedValueOnce([{ id: 1 }, { id: 2 }, { id: 3 }]);
+
+    const result = await handler({ method: "GET", path: "/chains" });
+
+    expect(result.content[0].text).toContain("3 items");
   });
 });
