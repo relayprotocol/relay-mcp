@@ -767,10 +767,29 @@ describe("get_transaction_history", () => {
           user: SENDER,
           recipient: SENDER,
           data: {
-            inTxs: [{ hash: "0x" + "a".repeat(64), chainId: 1, timestamp: 1700000000 }],
-            outTxs: [{ hash: "0x" + "b".repeat(64), chainId: 8453, timestamp: 1700000015 }],
-            currency: "ETH",
+            inTxs: [{ txHash: "0x" + "a".repeat(64), chainId: 1, timestamp: 1700000000 }],
+            outTxs: [{ txHash: "0x" + "b".repeat(64), chainId: 8453, timestamp: 1700000015 }],
+            failReason: null,
+            refundFailReason: null,
             timeEstimate: 15,
+            route: {
+              actual: {
+                origin: {
+                  inputCurrency: {
+                    currency: { chainId: 1, symbol: "ETH", decimals: 18 },
+                    amount: "1000000000000000",
+                    amountFormatted: "0.001",
+                  },
+                },
+                destination: {
+                  outputCurrency: {
+                    currency: { chainId: 8453, symbol: "USDC", decimals: 6 },
+                    amount: "2990000",
+                    amountFormatted: "2.99",
+                  },
+                },
+              },
+            },
           },
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:15Z",
@@ -789,6 +808,14 @@ describe("get_transaction_history", () => {
     expect(data.transactions).toHaveLength(1);
     expect(data.transactions[0].requestId).toBe("req-1");
     expect(data.transactions[0].status).toBe("success");
+    expect(data.transactions[0].originTx).toBe("0x" + "a".repeat(64));
+    expect(data.transactions[0].destinationTx).toBe("0x" + "b".repeat(64));
+    expect(data.transactions[0].originChain).toBe(1);
+    expect(data.transactions[0].destinationChain).toBe(8453);
+    expect(data.transactions[0].originCurrency).toBe("ETH");
+    expect(data.transactions[0].originAmount).toBe("0.001");
+    expect(data.transactions[0].destinationCurrency).toBe("USDC");
+    expect(data.transactions[0].destinationAmount).toBe("2.99");
   });
 
   it("rejects invalid address", async () => {
@@ -800,7 +827,7 @@ describe("get_transaction_history", () => {
 
   it("handles API errors", async () => {
     vi.mocked(getRequests).mockRejectedValueOnce(
-      new Error("Relay API GET /requests failed (429): rate limited")
+      new Error("Relay API GET /requests/v3 failed (429): rate limited")
     );
 
     const result = await handler({ user: SENDER, limit: 10 });
@@ -817,7 +844,7 @@ describe("get_transaction_history", () => {
           status: "success",
           user: SENDER,
           recipient: SENDER,
-          data: { inTxs: [], outTxs: [], currency: "ETH", timeEstimate: 0 },
+          data: { inTxs: [], outTxs: [], failReason: null, refundFailReason: null, route: null },
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
         },

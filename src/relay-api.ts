@@ -418,6 +418,65 @@ export interface RequestsResponse {
   continuation?: string;
 }
 
+export interface RelayCurrencyV3 {
+  chainId?: number;
+  address?: string;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
+}
+
+export interface RelayCurrencyAmountV3 {
+  currency?: RelayCurrencyV3;
+  amount?: string;
+  amountFormatted?: string;
+  amountUsd?: string;
+}
+
+export interface RelayRequestTxV3 {
+  txHash?: string;
+  chainId?: number;
+  timestamp?: number;
+  status?: "success" | "failure";
+}
+
+export interface RelayRequestRouteSideV3 {
+  inputCurrency?: RelayCurrencyAmountV3 | null;
+  outputCurrency?: RelayCurrencyAmountV3 | null;
+}
+
+export interface RelayRequestRouteSubV3 {
+  origin?: RelayRequestRouteSideV3 | null;
+  destination?: RelayRequestRouteSideV3 | null;
+}
+
+/** Subset of a GET /requests/v3 item. */
+export interface RelayRequestV3 {
+  id: string;
+  status: string;
+  user: string;
+  recipient: string;
+  data: {
+    inTxs: RelayRequestTxV3[];
+    outTxs: RelayRequestTxV3[];
+    failReason: string | null;
+    refundFailReason: string | null;
+    timeEstimate?: number | null;
+    route: {
+      quoted?: RelayRequestRouteSubV3 | null;
+      actual?: RelayRequestRouteSubV3 | null;
+    } | null;
+    [key: string]: unknown;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestsV3Response {
+  requests: RelayRequestV3[];
+  continuation?: string;
+}
+
 export interface GetRequestsParams {
   user: string;
   limit?: number;
@@ -429,9 +488,10 @@ export interface GetRequestsParams {
   depositAddress?: string;
 }
 
+/** Requires RELAY_API_KEY: GET /requests/v3 rejects unauthenticated calls. */
 export async function getRequests(
   params: GetRequestsParams
-): Promise<RequestsResponse> {
+): Promise<RequestsV3Response> {
   const query: Record<string, string> = {
     user: params.user,
     limit: String(params.limit ?? 10),
@@ -442,7 +502,7 @@ export async function getRequests(
   if (params.originChainId) query.originChainId = String(params.originChainId);
   if (params.destinationChainId) query.destinationChainId = String(params.destinationChainId);
   if (params.depositAddress) query.depositAddress = params.depositAddress;
-  return relayApi<RequestsResponse>("/requests", { params: query });
+  return relayApi<RequestsV3Response>("/requests/v3", { params: query });
 }
 
 /**

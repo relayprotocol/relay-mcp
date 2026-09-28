@@ -92,7 +92,7 @@ npm start
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RELAY_API_URL` | `https://api.relay.link` | Relay API base URL |
-| `RELAY_API_KEY` | — | Optional API key for higher rate limits |
+| `RELAY_API_KEY` | — | API key. Required by `get_transaction_history` (`GET /requests/v3`); optional elsewhere for higher rate limits |
 
 ## Features
 

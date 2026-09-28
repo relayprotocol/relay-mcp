@@ -96,16 +96,25 @@ Filter by time range, origin/destination chain, or deposit address to narrow res
         return mcpCatchError(err);
       }
 
-      const txs = result.requests.map((r) => ({
-        requestId: r.id,
-        status: r.status,
-        originChain: r.data.inTxs[0]?.chainId,
-        destinationChain: r.data.outTxs[0]?.chainId,
-        originTx: r.data.inTxs[0]?.hash,
-        destinationTx: r.data.outTxs[0]?.hash,
-        currency: r.data.currency,
-        createdAt: r.createdAt,
-      }));
+      const txs = result.requests.map((r) => {
+        const route = r.data.route?.actual ?? r.data.route?.quoted;
+        const input = route?.origin?.inputCurrency;
+        const output = route?.destination?.outputCurrency;
+        return {
+          requestId: r.id,
+          status: r.status,
+          failReason: r.data.failReason,
+          originChain: r.data.inTxs[0]?.chainId ?? input?.currency?.chainId,
+          destinationChain: r.data.outTxs[0]?.chainId ?? output?.currency?.chainId,
+          originTx: r.data.inTxs[0]?.txHash,
+          destinationTx: r.data.outTxs[0]?.txHash,
+          originCurrency: input?.currency?.symbol,
+          originAmount: input?.amountFormatted,
+          destinationCurrency: output?.currency?.symbol,
+          destinationAmount: output?.amountFormatted,
+          createdAt: r.createdAt,
+        };
+      });
 
       const filters: string[] = [];
       if (resolvedOrigin) filters.push(`origin: chain ${resolvedOrigin}`);
