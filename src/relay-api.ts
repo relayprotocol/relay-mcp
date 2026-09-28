@@ -363,58 +363,82 @@ export async function getIntentStatus(
   });
 }
 
-export interface RelayRequest {
+export interface RelayCurrencyV3 {
+  chainId?: number;
+  address?: string;
+  symbol?: string;
+  name?: string;
+  decimals?: number;
+}
+
+export interface RelayCurrencyAmountV3 {
+  currency?: RelayCurrencyV3;
+  amount?: string;
+  amountFormatted?: string;
+  amountUsd?: string;
+}
+
+export interface RelayRequestTxV3 {
+  txHash?: string;
+  chainId?: number;
+  timestamp?: number;
+  status?: "success" | "failure";
+}
+
+export interface RelayRequestRouteSideV3 {
+  inputCurrency?: RelayCurrencyAmountV3 | null;
+  outputCurrency?: RelayCurrencyAmountV3 | null;
+}
+
+export interface RelayRequestRouteSubV3 {
+  origin?: RelayRequestRouteSideV3 | null;
+  destination?: RelayRequestRouteSideV3 | null;
+}
+
+export interface RelayFeeComponentV3 {
+  usd?: string | null;
+  amount?: string | null;
+  amountFormatted?: string | null;
+}
+
+export interface RelayFeesV3 {
+  quoted?: Record<string, RelayFeeComponentV3 | null>;
+  actual?: Record<string, RelayFeeComponentV3 | null>;
+  currency?: Record<string, unknown>;
+}
+
+export interface RelayAppFeesV3 {
+  quoted?: unknown[];
+  actual?: unknown[];
+  currency?: Record<string, unknown>;
+}
+
+/** Subset of a GET /requests/v3 item. */
+export interface RelayRequestV3 {
   id: string;
   status: string;
   user: string;
   recipient: string;
   data: {
-    inTxs: Array<{
-      hash: string;
-      chainId: number;
-      timestamp: number;
-      data?: Record<string, unknown>;
-    }>;
-    outTxs: Array<{
-      hash: string;
-      chainId: number;
-      timestamp: number;
-    }>;
-    currency: string;
-    timeEstimate: number;
-    failReason?: string;
-    refundFailReason?: string;
-    fees?: Record<string, string>;
-    feesUsd?: Record<string, string>;
-    metadata?: {
-      sender?: string;
-      recipient?: string;
-      currencyIn?: {
-        currency: { chainId: number; address: string; symbol: string; name: string; decimals: number };
-        amount: string;
-        amountFormatted: string;
-        amountUsd: string;
-      };
-      currencyOut?: {
-        currency: { chainId: number; address: string; symbol: string; name: string; decimals: number };
-        amount: string;
-        amountFormatted: string;
-        amountUsd: string;
-      };
-      rate?: string;
-      route?: Record<string, unknown>;
-      [key: string]: unknown;
-    };
-    appFees?: unknown[];
-    paidAppFees?: unknown[];
+    inTxs: RelayRequestTxV3[];
+    outTxs: RelayRequestTxV3[];
+    failReason: string | null;
+    refundFailReason: string | null;
+    timeEstimate?: number | null;
+    route: {
+      quoted?: RelayRequestRouteSubV3 | null;
+      actual?: (RelayRequestRouteSubV3 & { rate?: string }) | null;
+    } | null;
+    fees?: RelayFeesV3 | null;
+    appFees?: RelayAppFeesV3;
     [key: string]: unknown;
   };
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RequestsResponse {
-  requests: RelayRequest[];
+export interface RequestsV3Response {
+  requests: RelayRequestV3[];
   continuation?: string;
 }
 
@@ -429,9 +453,10 @@ export interface GetRequestsParams {
   depositAddress?: string;
 }
 
+/** Requires RELAY_API_KEY: GET /requests/v3 rejects unauthenticated calls. */
 export async function getRequests(
   params: GetRequestsParams
-): Promise<RequestsResponse> {
+): Promise<RequestsV3Response> {
   const query: Record<string, string> = {
     user: params.user,
     limit: String(params.limit ?? 10),
@@ -442,7 +467,7 @@ export async function getRequests(
   if (params.originChainId) query.originChainId = String(params.originChainId);
   if (params.destinationChainId) query.destinationChainId = String(params.destinationChainId);
   if (params.depositAddress) query.depositAddress = params.depositAddress;
-  return relayApi<RequestsResponse>("/requests", { params: query });
+  return relayApi<RequestsV3Response>("/requests/v3", { params: query });
 }
 
 /**
@@ -451,21 +476,21 @@ export async function getRequests(
  */
 export async function getRequestById(
   id: string
-): Promise<RequestsResponse> {
-  return relayApi<RequestsResponse>("/requests/v2", {
+): Promise<RequestsV3Response> {
+  return relayApi<RequestsV3Response>("/requests/v3", {
     params: { id },
   });
 }
 
 /**
- * Look up requests by transaction hash.
- * Useful for debugging: "what request does this tx belong to?"
+ * Look up requests by transaction hash via the v3 `term` search, which matches
+ * deposit, fill, refund and failed transaction hashes.
  */
 export async function getRequestByHash(
   hash: string
-): Promise<RequestsResponse> {
-  return relayApi<RequestsResponse>("/requests/v2", {
-    params: { hash },
+): Promise<RequestsV3Response> {
+  return relayApi<RequestsV3Response>("/requests/v3", {
+    params: { term: hash },
   });
 }
 

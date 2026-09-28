@@ -117,14 +117,17 @@ describe("Relay API - live smoke tests", () => {
     expect(parseFloat(quote.details.currencyOut.amountFormatted)).toBeGreaterThan(0);
   });
 
-  // ─── /requests ──────────────────────────────────────────────────
+  // ─── /requests/v3 ───────────────────────────────────────────────
 
-  it("GET /requests returns (possibly empty) result for Vitalik", async () => {
+  it.skipIf(!process.env.RELAY_API_KEY)(
+    "GET /requests/v3 returns (possibly empty) result for Vitalik",
+    async () => {
     const result = await getRequests({ user: VITALIK, limit: 5 });
     expect(result).toBeDefined();
     expect(Array.isArray(result.requests)).toBe(true);
     // We can't guarantee Vitalik has Relay transactions, but the API should not error
-  });
+    }
+  );
 
   // ─── Deeplink builder with real chain data ──────────────────────
 

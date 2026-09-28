@@ -45,7 +45,7 @@ Use get_api_schema first to discover endpoints and their parameter schemas, then
 - Full /quote/v2 params: slippageTolerance, appFees, includedSwapSources, useExternalLiquidity, topupGas, maxRouteLength, etc.
 - Full response data: detailed fee breakdowns, route objects, slippage details, protocol data, swap impact
 - Endpoints without dedicated tools: /price (lightweight pricing), /currencies/v2, /execute/* (with pre-signed data)
-- Advanced /requests/v2 query params: sortBy, sortDirection, includeOrderData, referrer, includeChildTxs
+- Advanced /requests/v3 query params: sortBy, sortDirection, referrer, includeChildRequests, includeTotal, filters
 
 For common operations (simple quotes, token search, chain status), prefer the dedicated tools — they validate inputs, resolve chain names/token symbols, and format responses. Use this tool when you need parameters or response fields those tools don't expose.`,
     {
@@ -56,7 +56,7 @@ For common operations (simple quotes, token search, chain status), prefer the de
       path: z
         .string()
         .describe(
-          "API endpoint path (e.g. '/quote/v2', '/chains', '/requests/v2'). Must start with '/'."
+          "API endpoint path (e.g. '/quote/v2', '/chains', '/requests/v3'). Must start with '/'."
         ),
       params: z
         .record(z.string())

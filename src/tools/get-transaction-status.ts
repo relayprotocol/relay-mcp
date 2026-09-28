@@ -3,7 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getRequestById,
   getRequestByHash,
-  type RelayRequest,
+  type RelayCurrencyAmountV3,
+  type RelayRequestTxV3,
+  type RelayRequestV3,
 } from "../relay-api.js";
 import {
   validateRequestId,
@@ -13,31 +15,36 @@ import {
 import { mcpCatchError } from "../utils/errors.js";
 import { RELAY_APP_URL } from "../utils/descriptions.js";
 
-function formatRequest(req: RelayRequest): {
+function describeSide(
+  side: RelayCurrencyAmountV3 | null | undefined,
+  txs: RelayRequestTxV3[] | undefined,
+  fallback: string
+): string {
+  if (side?.currency) {
+    return `${side.amountFormatted} ${side.currency.symbol} on chain ${side.currency.chainId}`;
+  }
+  const chainId = txs?.[0]?.chainId;
+  return chainId !== undefined ? `chain ${chainId}` : fallback;
+}
+
+function formatRequest(req: RelayRequestV3): {
   summary: string;
   data: Record<string, unknown>;
 } {
   const trackingUrl = `${RELAY_APP_URL}/transaction/${req.id}`;
   const d = req.data;
+  const route = d.route?.actual ?? d.route?.quoted;
+  const input = route?.origin?.inputCurrency;
+  const output = route?.destination?.outputCurrency;
 
-  // Build origin / destination one-liners
-  const origin = d.metadata?.currencyIn
-    ? `${d.metadata.currencyIn.amountFormatted} ${d.metadata.currencyIn.currency.symbol} on chain ${d.metadata.currencyIn.currency.chainId}`
-    : d.inTxs?.[0]
-      ? `chain ${d.inTxs[0].chainId}`
-      : "unknown origin";
-
-  const destination = d.metadata?.currencyOut
-    ? `${d.metadata.currencyOut.amountFormatted} ${d.metadata.currencyOut.currency.symbol} on chain ${d.metadata.currencyOut.currency.chainId}`
-    : d.outTxs?.[0]
-      ? `chain ${d.outTxs[0].chainId}`
-      : "unknown destination";
+  const origin = describeSide(input, d.inTxs, "unknown origin");
+  const destination = describeSide(output, d.outTxs, "unknown destination");
 
   // Status-specific summary
   let summary: string;
   switch (req.status) {
     case "success":
-      summary = `✅ Complete: ${origin} → ${destination}. Output tx: ${d.outTxs?.map((t) => t.hash).join(", ") || "confirming"}.\n\nView: ${trackingUrl}`;
+      summary = `✅ Complete: ${origin} → ${destination}. Output tx: ${d.outTxs?.map((t) => t.txHash).join(", ") || "confirming"}.\n\nView: ${trackingUrl}`;
       break;
     case "pending":
       summary = `⏳ Processing: ${origin} → ${destination}. Relay is filling the order.`;
@@ -61,16 +68,16 @@ function formatRequest(req: RelayRequest): {
     status: req.status,
     user: req.user,
     recipient: req.recipient,
-    origin: d.metadata?.currencyIn || {
+    origin: input || {
       chainId: d.inTxs?.[0]?.chainId,
-      txHash: d.inTxs?.[0]?.hash,
+      txHash: d.inTxs?.[0]?.txHash,
     },
-    destination: d.metadata?.currencyOut || {
+    destination: output || {
       chainId: d.outTxs?.[0]?.chainId,
-      txHash: d.outTxs?.[0]?.hash,
+      txHash: d.outTxs?.[0]?.txHash,
     },
-    inTxHashes: d.inTxs?.map((t) => t.hash),
-    outTxHashes: d.outTxs?.map((t) => t.hash),
+    inTxHashes: d.inTxs?.map((t) => t.txHash),
+    outTxHashes: d.outTxs?.map((t) => t.txHash),
     timeEstimate: d.timeEstimate,
     createdAt: req.createdAt,
     updatedAt: req.updatedAt,
@@ -79,12 +86,10 @@ function formatRequest(req: RelayRequest): {
 
   if (d.failReason) data.failReason = d.failReason;
   if (d.refundFailReason) data.refundFailReason = d.refundFailReason;
-  if (d.feesUsd) data.feesUsd = d.feesUsd;
   if (d.fees) data.fees = d.fees;
-  if (d.metadata?.rate) data.rate = d.metadata.rate;
-  if (d.metadata?.route) data.route = d.metadata.route;
-  if (d.appFees?.length) data.appFees = d.appFees;
-  if (d.paidAppFees?.length) data.paidAppFees = d.paidAppFees;
+  if (d.route?.actual?.rate) data.rate = d.route.actual.rate;
+  if (d.route) data.route = d.route;
+  if (d.appFees?.actual?.length || d.appFees?.quoted?.length) data.appFees = d.appFees;
 
   return { summary, data };
 }
