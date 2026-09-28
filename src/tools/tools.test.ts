@@ -623,22 +623,30 @@ describe("get_transaction_status", () => {
     user: SENDER,
     recipient: SENDER,
     data: {
-      inTxs: [{ hash: VALID_TX_HASH, chainId: 1, timestamp: 1700000000 }],
-      outTxs: [{ hash: "0x" + "c".repeat(64), chainId: 8453, timestamp: 1700000015 }],
-      currency: "ETH",
+      inTxs: [{ txHash: VALID_TX_HASH, chainId: 1, timestamp: 1700000000 }],
+      outTxs: [{ txHash: "0x" + "c".repeat(64), chainId: 8453, timestamp: 1700000015 }],
+      failReason: null,
+      refundFailReason: null,
       timeEstimate: 15,
-      metadata: {
-        currencyIn: {
-          currency: { chainId: 1, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
-          amount: "1000000000000000000",
-          amountFormatted: "1.0",
-          amountUsd: "3000.00",
-        },
-        currencyOut: {
-          currency: { chainId: 8453, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
-          amount: "999000000000000000",
-          amountFormatted: "0.999",
-          amountUsd: "2997.00",
+      route: {
+        actual: {
+          origin: {
+            inputCurrency: {
+              currency: { chainId: 1, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
+              amount: "1000000000000000000",
+              amountFormatted: "1.0",
+              amountUsd: "3000.00",
+            },
+          },
+          destination: {
+            outputCurrency: {
+              currency: { chainId: 8453, address: VALID_ADDRESS, symbol: "ETH", name: "Ether", decimals: 18 },
+              amount: "999000000000000000",
+              amountFormatted: "0.999",
+              amountUsd: "2997.00",
+            },
+          },
+          rate: "0.999",
         },
       },
     },
@@ -659,8 +667,14 @@ describe("get_transaction_status", () => {
     const result = await handler({ requestId: VALID_REQUEST_ID });
 
     expect(result.isError).toBeUndefined();
-    expect(result.content[0].text).toContain("Complete");
+    expect(result.content[0].text).toContain("Complete: 1.0 ETH on chain 1 → 0.999 ETH on chain 8453");
+    expect(result.content[0].text).toContain("0x" + "c".repeat(64));
     expect(vi.mocked(getRequestById)).toHaveBeenCalledWith(VALID_REQUEST_ID);
+    const data = JSON.parse(result.content[1].text);
+    expect(data.origin.amountFormatted).toBe("1.0");
+    expect(data.destination.currency.chainId).toBe(8453);
+    expect(data.inTxHashes).toEqual([VALID_TX_HASH]);
+    expect(data.rate).toBe("0.999");
   });
 
   it("resolves txHash to requestId then gets status", async () => {
@@ -702,7 +716,7 @@ describe("get_transaction_status", () => {
 
   it("handles API error on txHash lookup", async () => {
     vi.mocked(getRequestByHash).mockRejectedValueOnce(
-      new Error("Relay API GET /requests/v2 failed (500): server error")
+      new Error("Relay API GET /requests/v3 failed (500): server error")
     );
 
     const result = await handler({ txHash: VALID_TX_HASH });
@@ -713,7 +727,7 @@ describe("get_transaction_status", () => {
 
   it("handles API error on status lookup", async () => {
     vi.mocked(getRequestById).mockRejectedValueOnce(
-      new Error("Relay API GET /requests/v2 failed (404): not found")
+      new Error("Relay API GET /requests/v3 failed (404): not found")
     );
 
     const result = await handler({ requestId: VALID_REQUEST_ID });
@@ -1704,12 +1718,12 @@ describe("execute_api_call", () => {
 
     const result = await handler({
       method: "GET",
-      path: "/requests/v2",
+      path: "/requests/v3",
       params: { user: "0xabc", limit: "10" },
     });
 
     expect(result.isError).toBeUndefined();
-    expect(vi.mocked(relayApi)).toHaveBeenCalledWith("/requests/v2", {
+    expect(vi.mocked(relayApi)).toHaveBeenCalledWith("/requests/v3", {
       method: "GET",
       params: { user: "0xabc", limit: "10" },
       body: undefined,
