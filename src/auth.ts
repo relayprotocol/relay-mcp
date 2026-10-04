@@ -52,6 +52,10 @@ export const openAuthProvider: OAuthServerProvider = {
     params: AuthorizationParams,
     res: Response
   ) {
+    if (!client.redirect_uris?.includes(params.redirectUri)) {
+      throw new Error("Unregistered redirect URI");
+    }
+
     // Auto-approve: generate auth code and redirect back immediately
     const code = randomUUID();
     codes.set(code, {
@@ -76,11 +80,14 @@ export const openAuthProvider: OAuthServerProvider = {
   },
 
   async exchangeAuthorizationCode(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     authorizationCode: string
   ) {
     const entry = codes.get(authorizationCode);
     if (!entry) throw new Error("Invalid authorization code");
+    if (entry.clientId !== client.client_id) {
+      throw new Error("Authorization code was issued to a different client");
+    }
     codes.delete(authorizationCode);
 
     const accessToken = randomUUID();
@@ -118,15 +125,9 @@ export const openAuthProvider: OAuthServerProvider = {
       };
     }
 
-    // Accept any bearer token — Relay's API is public, and in-memory
-    // tokens don't survive restarts. This avoids breaking clients
-    // when the server redeploys.
-    return {
-      token,
-      clientId: "unknown",
-      scopes: [],
-      expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
-    };
+    // Tokens must have been issued by this server instance. Clients reauthorize
+    // after a restart instead of gaining access with an arbitrary bearer token.
+    throw new Error("Invalid access token");
   },
 
   async revokeToken(
@@ -136,6 +137,6 @@ export const openAuthProvider: OAuthServerProvider = {
     tokens.delete(request.token);
   },
 
-  // Skip PKCE validation — we auto-approve everything
-  skipLocalPkceValidation: true,
+  
+
 };
