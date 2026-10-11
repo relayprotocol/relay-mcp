@@ -5,7 +5,7 @@ const RETRY_BASE_MS = 500;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   params?: Record<string, string>;
 }
