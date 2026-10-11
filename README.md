@@ -4,7 +4,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Pr
 
 [![Install with Cursor](https://img.shields.io/badge/Cursor-Install%20MCP-blue?style=flat&logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=relay&type=command&command=npx&args=-y%20%40relayprotocol%2Frelay-mcp)
 
-## Tools (16)
+## Tools (20)
 
 ### Quoting & Routing
 
@@ -12,7 +12,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Pr
 |------|-------------|
 | `get_bridge_quote` | Quote for bridging same token across chains |
 | `get_swap_quote` | Quote for swapping between different tokens (same-chain or cross-chain) |
+| `get_multi_input_quote` | Quote for consolidating a token from multiple origin chains into one destination |
 | `estimate_fees` | Fee breakdown for a bridge or swap route |
+| `get_user_balance` | A user's token balance on a route and the max amount they can bridge/swap |
 
 ### Token & Chain Discovery
 
@@ -46,6 +48,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for [Relay Pr
 | `get_app_fees` | Claimable app fee balances and claim history (2 API calls in 1 tool) |
 | `get_relay_app_url` | Deep link to the Relay web app with pre-filled parameters |
 | `get_api_schema` | Discover Relay API endpoints and inspect their schemas |
+| `execute_api_call` | Call any public Relay API endpoint directly and get the raw response |
+
+### Utilities
+
+| Tool | Description |
+|------|-------------|
+| `convert_amount` | Convert token amounts between human-readable and smallest-unit (wei/lamports/satoshis) |
 
 ## Usage
 
