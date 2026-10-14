@@ -988,6 +988,9 @@ describe("get_api_schema", () => {
       "/admin/test": {
         get: { summary: "Admin endpoint" },
       },
+      "/withdrawals/request": {
+        post: { summary: "Request withdrawal" },
+      },
       "/currencies/v1": {
         post: { summary: "Search currencies" },
       },
@@ -1009,6 +1012,7 @@ describe("get_api_schema", () => {
     expect(text).toContain("/currencies/v1");
     // Should exclude admin
     expect(text).not.toContain("/admin");
+    expect(text).not.toContain("/withdrawals/request");
     // Should exclude older version (/quote) since /quote/v2 exists
     expect(text).not.toContain("Legacy quote");
   });
@@ -1766,6 +1770,35 @@ describe("execute_api_call", () => {
     expect(result.content[0].text).toContain("not accessible");
   });
 
+  it.each([
+    ["POST", "/withdrawals/request"],
+    ["POST", "/withdrawals/attest-deposit"],
+    ["POST", "/app-fees/0xabc/claim"],
+    ["POST", "/requests/metadata"],
+    ["POST", "/transactions/index"],
+    ["POST", "/deposit-addresses/abc/disable/v2"],
+    ["GET", "/metrics/usage"],
+    ["GET", "/quote/v2"],
+    ["POST", "/chains"],
+    ["POST", "/quote/v2/../../execute"],
+    ["POST", "/quote/%2e%2e/execute"],
+    ["GET", "/chains?x=1"],
+  ])("blocks %s %s", async (method, path) => {
+    const result = await handler({ method, path });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not accessible");
+    expect(vi.mocked(relayApi)).not.toHaveBeenCalled();
+  });
+
+  it("allows templated read-only paths", async () => {
+    vi.mocked(relayApi).mockResolvedValueOnce({});
+
+    const result = await handler({ method: "GET", path: "/app-fees/0xabc/balances" });
+
+    expect(result.isError).toBeUndefined();
+  });
+
   it("rejects path without leading slash", async () => {
     const result = await handler({ method: "GET", path: "chains" });
 
@@ -1774,10 +1807,10 @@ describe("execute_api_call", () => {
   });
 
   it("handles API errors gracefully", async () => {
-    const err = new Error("Relay API GET /bad failed (404): not found");
+    const err = new Error("Relay API GET /chains failed (500): boom");
     vi.mocked(relayApi).mockRejectedValueOnce(err);
 
-    const result = await handler({ method: "GET", path: "/bad" });
+    const result = await handler({ method: "GET", path: "/chains" });
 
     expect(result.isError).toBe(true);
   });

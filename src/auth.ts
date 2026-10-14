@@ -1,10 +1,10 @@
 /**
- * Simple open OAuth provider for remote MCP clients (Claude, etc.).
- * Auto-approves all clients — Relay's API is public, so no real auth needed.
- * This just satisfies the MCP OAuth handshake requirement.
+ * OAuth provider for remote MCP clients (Claude, etc.).
+ * Auto-approves all clients; tokens are HMAC-signed so they survive restarts
+ * when MCP_TOKEN_SECRET is set.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Response } from "express";
 import type {
   OAuthServerProvider,
@@ -17,14 +17,84 @@ import type {
   OAuthTokens,
   OAuthTokenRevocationRequest,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
+import {
+  InvalidGrantError,
+  InvalidTokenError,
+} from "@modelcontextprotocol/sdk/server/auth/errors.js";
 
-// In-memory stores
+export const ACCESS_TOKEN_TTL = 3600 * 24;
+export const REFRESH_TOKEN_TTL = 3600 * 24 * 30;
+const AUTH_CODE_TTL = 600;
+
+const secret = process.env.MCP_TOKEN_SECRET
+  ? Buffer.from(process.env.MCP_TOKEN_SECRET)
+  : randomBytes(32);
+
 const clients = new Map<string, OAuthClientInformationFull>();
 const codes = new Map<
   string,
-  { clientId: string; codeChallenge: string; redirectUri: string }
+  { clientId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
 >();
-const tokens = new Map<string, { clientId: string; expiresAt: number }>();
+// In-memory, so revocation is lost on restart; acceptable only while client registration is open.
+const revoked = new Map<string, { expiresAt: number }>();
+
+type TokenType = "access" | "refresh";
+
+interface TokenPayload {
+  typ: TokenType;
+  cid: string;
+  exp: number;
+  jti: string;
+}
+
+const now = () => Math.floor(Date.now() / 1000);
+
+function hmac(data: string): Buffer {
+  return createHmac("sha256", secret).update(data).digest();
+}
+
+function signToken(typ: TokenType, clientId: string, ttl: number): string {
+  const payload: TokenPayload = { typ, cid: clientId, exp: now() + ttl, jti: randomUUID() };
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${body}.${hmac(body).toString("base64url")}`;
+}
+
+function readToken(token: string, typ: TokenType): TokenPayload | undefined {
+  const [body, sig, ...rest] = token.split(".");
+  if (!body || !sig || rest.length) return undefined;
+
+  const expected = hmac(body);
+  const given = Buffer.from(sig, "base64url");
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+    return undefined;
+  }
+
+  let payload: TokenPayload;
+  try {
+    payload = JSON.parse(Buffer.from(body, "base64url").toString());
+  } catch {
+    return undefined;
+  }
+  if (payload.typ !== typ || typeof payload.exp !== "number" || payload.exp <= now()) {
+    return undefined;
+  }
+  if (revoked.has(payload.jti)) return undefined;
+  return payload;
+}
+
+function issueTokens(clientId: string): OAuthTokens {
+  return {
+    access_token: signToken("access", clientId, ACCESS_TOKEN_TTL),
+    token_type: "Bearer",
+    expires_in: ACCESS_TOKEN_TTL,
+    refresh_token: signToken("refresh", clientId, REFRESH_TOKEN_TTL),
+  };
+}
+
+function pruneExpired<V extends { expiresAt: number }>(map: Map<string, V>) {
+  const t = now();
+  for (const [k, v] of map) if (v.expiresAt <= t) map.delete(k);
+}
 
 const clientsStore: OAuthRegisteredClientsStore = {
   getClient(clientId: string) {
@@ -35,12 +105,20 @@ const clientsStore: OAuthRegisteredClientsStore = {
     const full: OAuthClientInformationFull = {
       ...client,
       client_id: clientId,
-      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_id_issued_at: now(),
     };
     clients.set(clientId, full);
     return full;
   },
 };
+
+function takeCode(client: OAuthClientInformationFull, authorizationCode: string) {
+  const entry = codes.get(authorizationCode);
+  if (!entry || entry.expiresAt <= now() || entry.clientId !== client.client_id) {
+    throw new InvalidGrantError("Invalid authorization code");
+  }
+  return entry;
+}
 
 export const openAuthProvider: OAuthServerProvider = {
   get clientsStore() {
@@ -52,12 +130,13 @@ export const openAuthProvider: OAuthServerProvider = {
     params: AuthorizationParams,
     res: Response
   ) {
-    // Auto-approve: generate auth code and redirect back immediately
+    pruneExpired(codes);
     const code = randomUUID();
     codes.set(code, {
       clientId: client.client_id,
       codeChallenge: params.codeChallenge,
       redirectUri: params.redirectUri,
+      expiresAt: now() + AUTH_CODE_TTL,
     });
 
     const url = new URL(params.redirectUri);
@@ -67,75 +146,58 @@ export const openAuthProvider: OAuthServerProvider = {
   },
 
   async challengeForAuthorizationCode(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     authorizationCode: string
   ) {
-    const entry = codes.get(authorizationCode);
-    if (!entry) throw new Error("Invalid authorization code");
-    return entry.codeChallenge;
+    return takeCode(client, authorizationCode).codeChallenge;
   },
 
   async exchangeAuthorizationCode(
-    _client: OAuthClientInformationFull,
-    authorizationCode: string
+    client: OAuthClientInformationFull,
+    authorizationCode: string,
+    _codeVerifier?: string,
+    redirectUri?: string
   ) {
-    const entry = codes.get(authorizationCode);
-    if (!entry) throw new Error("Invalid authorization code");
+    const entry = takeCode(client, authorizationCode);
     codes.delete(authorizationCode);
-
-    const accessToken = randomUUID();
-    const expiresIn = 3600 * 24 * 365; // 1 year
-    tokens.set(accessToken, {
-      clientId: entry.clientId,
-      expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
-    });
-
-    const result: OAuthTokens = {
-      access_token: accessToken,
-      token_type: "Bearer",
-      expires_in: expiresIn,
-    };
-    return result;
+    if (redirectUri !== undefined && redirectUri !== entry.redirectUri) {
+      throw new InvalidGrantError("redirect_uri does not match authorization request");
+    }
+    return issueTokens(client.client_id);
   },
 
-  async exchangeRefreshToken() {
-    throw new Error("Refresh tokens not supported");
+  async exchangeRefreshToken(
+    client: OAuthClientInformationFull,
+    refreshToken: string
+  ) {
+    const payload = readToken(refreshToken, "refresh");
+    if (!payload || payload.cid !== client.client_id) {
+      throw new InvalidGrantError("Invalid refresh token");
+    }
+    pruneExpired(revoked);
+    revoked.set(payload.jti, { expiresAt: payload.exp });
+    return issueTokens(client.client_id);
   },
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
-    // First check in-memory store (tokens issued this process lifetime)
-    const entry = tokens.get(token);
-    if (entry) {
-      if (entry.expiresAt < Math.floor(Date.now() / 1000)) {
-        tokens.delete(token);
-        throw new Error("Token expired");
-      }
-      return {
-        token,
-        clientId: entry.clientId,
-        scopes: [],
-        expiresAt: entry.expiresAt,
-      };
-    }
-
-    // Accept any bearer token — Relay's API is public, and in-memory
-    // tokens don't survive restarts. This avoids breaking clients
-    // when the server redeploys.
+    const payload = readToken(token, "access");
+    if (!payload) throw new InvalidTokenError("Invalid or expired access token");
     return {
       token,
-      clientId: "unknown",
+      clientId: payload.cid,
       scopes: [],
-      expiresAt: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
+      expiresAt: payload.exp,
     };
   },
 
   async revokeToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     request: OAuthTokenRevocationRequest
   ) {
-    tokens.delete(request.token);
+    const payload =
+      readToken(request.token, "access") ?? readToken(request.token, "refresh");
+    if (!payload || payload.cid !== client.client_id) return;
+    pruneExpired(revoked);
+    revoked.set(payload.jti, { expiresAt: payload.exp });
   },
-
-  // Skip PKCE validation — we auto-approve everything
-  skipLocalPkceValidation: true,
 };
