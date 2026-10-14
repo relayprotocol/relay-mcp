@@ -13,44 +13,24 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { relayApi } from "../relay-api.js";
 import { mcpCatchError } from "../utils/errors.js";
-
-/**
- * Endpoints that should never be callable via this tool.
- * /execute/* endpoints require signed transaction data and wallet interaction
- * which MCP servers should not handle — execution belongs in the client/wallet layer.
- */
-const BLOCKED_PATTERNS = [
-  "/execute",
-  "/fast-fill",
-  "/admin",
-  "/lives",
-  "/loadforge",
-  "/conduit",
-  "/provision",
-  "/wallets/screen",
-  "/sanctioned",
-];
-
-function isBlocked(path: string): boolean {
-  return BLOCKED_PATTERNS.some((p) => path.includes(p));
-}
+import { isAllowedEndpoint } from "../utils/api-allowlist.js";
 
 export function register(server: McpServer) {
   server.tool(
     "execute_api_call",
-    `Call any public Relay API endpoint with full parameters and get the raw, unfiltered response.
+    `Call a read-only Relay API endpoint with full parameters and get the raw, unfiltered response.
 
 Use get_api_schema first to discover endpoints and their parameter schemas, then use this tool to call them. This gives you access to all API features that the dedicated tools simplify away — for example:
 
 - Full /quote/v2 params: slippageTolerance, appFees, includedSwapSources, useExternalLiquidity, topupGas, maxRouteLength, etc.
 - Full response data: detailed fee breakdowns, route objects, slippage details, protocol data, swap impact
-- Endpoints without dedicated tools: /price (lightweight pricing), /currencies/v2, /execute/* (with pre-signed data)
+- Endpoints without dedicated tools: /price (lightweight pricing), /currencies/v2
 - Advanced /requests/v3 query params: sortBy, sortDirection, referrer, includeChildRequests, includeTotal, filters
 
 For common operations (simple quotes, token search, chain status), prefer the dedicated tools — they validate inputs, resolve chain names/token symbols, and format responses. Use this tool when you need parameters or response fields those tools don't expose.`,
     {
       method: z
-        .enum(["GET", "POST", "PUT", "DELETE"])
+        .enum(["GET", "POST"])
         .default("GET")
         .describe("HTTP method."),
       path: z
@@ -85,12 +65,12 @@ For common operations (simple quotes, token search, chain status), prefer the de
         };
       }
 
-      if (isBlocked(path)) {
+      if (!isAllowedEndpoint(method, path)) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `Endpoint "${path}" is not accessible via this tool.`,
+              text: `${method} ${path} is not accessible via this tool. Use get_api_schema to list available endpoints.`,
             },
           ],
           isError: true as const,

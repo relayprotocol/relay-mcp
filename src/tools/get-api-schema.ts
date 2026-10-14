@@ -8,27 +8,21 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getOpenApiSpec } from "../relay-api.js";
 import { mcpCatchError } from "../utils/errors.js";
+import { isAllowedSpecPath } from "../utils/api-allowlist.js";
 
 const HTTP_METHODS = ["get", "post", "put", "delete", "patch"] as const;
-
-/** Filter out internal/admin endpoints. */
-const EXCLUDE_PATTERNS = [
-  "/admin",
-  "/lives",
-  "/loadforge",
-  "/conduit",
-  "/provision",
-  "/wallets/screen",
-  "/sanctioned",
-];
 
 function getPublicPaths(
   spec: any
 ): Record<string, any> {
   const filtered: Record<string, any> = {};
   for (const [path, item] of Object.entries(spec.paths)) {
-    if (EXCLUDE_PATTERNS.some((p) => path.includes(p))) continue;
-    filtered[path] = item;
+    const allowed: Record<string, any> = {};
+    for (const method of HTTP_METHODS) {
+      const op = (item as any)[method];
+      if (op && isAllowedSpecPath(path, method)) allowed[method] = op;
+    }
+    if (Object.keys(allowed).length) filtered[path] = allowed;
   }
   return filtered;
 }
