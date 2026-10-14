@@ -1,5 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Response } from "express";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { createHash } from "node:crypto";
+import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import express, { type Response } from "express";
+import { tokenHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/token.js";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 import {
   InvalidGrantError,
@@ -15,11 +19,14 @@ async function register(): Promise<OAuthClientInformationFull> {
   } as any) as Promise<OAuthClientInformationFull>;
 }
 
-async function authorize(client: OAuthClientInformationFull): Promise<string> {
+async function authorize(
+  client: OAuthClientInformationFull,
+  codeChallenge = "challenge"
+): Promise<string> {
   const redirect = vi.fn();
   await openAuthProvider.authorize(
     client,
-    { codeChallenge: "challenge", redirectUri: REDIRECT } as any,
+    { codeChallenge, redirectUri: REDIRECT } as any,
     { redirect } as unknown as Response
   );
   return new URL(redirect.mock.calls[0][0]).searchParams.get("code")!;
@@ -31,10 +38,6 @@ async function login(client: OAuthClientInformationFull) {
 }
 
 describe("openAuthProvider", () => {
-  it("enforces PKCE", () => {
-    expect(openAuthProvider.skipLocalPkceValidation).toBeFalsy();
-  });
-
   it("rejects unknown bearer tokens", async () => {
     await expect(openAuthProvider.verifyAccessToken("random-string")).rejects.toBeInstanceOf(
       InvalidTokenError
@@ -141,5 +144,59 @@ describe("openAuthProvider", () => {
     await expect(openAuthProvider.verifyAccessToken(access_token)).rejects.toBeInstanceOf(
       InvalidTokenError
     );
+  });
+});
+
+describe("token endpoint PKCE", () => {
+  const verifier = "a".repeat(43) + "-pkce-verifier";
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  let server: Server;
+  let tokenUrl: string;
+
+  beforeAll(async () => {
+    const app = express();
+    app.use("/token", tokenHandler({ provider: openAuthProvider, rateLimit: false }));
+    server = app.listen(0);
+    await new Promise((r) => server.once("listening", r));
+    tokenUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/token`;
+  });
+
+  afterAll(() => {
+    server.close();
+  });
+
+  async function exchange(client: OAuthClientInformationFull, code: string, codeVerifier?: string) {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: client.client_id,
+      code,
+      redirect_uri: REDIRECT,
+      ...(codeVerifier !== undefined && { code_verifier: codeVerifier }),
+    });
+    return fetch(tokenUrl, { method: "POST", body });
+  }
+
+  it("rejects a missing code_verifier", async () => {
+    const client = await register();
+    const res = await exchange(client, await authorize(client, challenge));
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a wrong code_verifier", async () => {
+    const client = await register();
+    const res = await exchange(client, await authorize(client, challenge), "b".repeat(43));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_grant");
+  });
+
+  it("issues tokens for the correct code_verifier", async () => {
+    const client = await register();
+    const res = await exchange(client, await authorize(client, challenge), verifier);
+
+    expect(res.status).toBe(200);
+    const tokens = await res.json();
+    await expect(openAuthProvider.verifyAccessToken(tokens.access_token)).resolves.toBeDefined();
   });
 });

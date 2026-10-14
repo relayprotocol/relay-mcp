@@ -35,6 +35,7 @@ const codes = new Map<
   string,
   { clientId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
 >();
+// In-memory, so revocation is lost on restart; acceptable only while client registration is open.
 const revoked = new Map<string, { expiresAt: number }>();
 
 type TokenType = "access" | "refresh";
