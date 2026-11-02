@@ -47,7 +47,7 @@ describe("resolveTokenAddress — native gas token", () => {
 describe("resolveTokenAddress — RED: non-ETH-native chains", () => {
   it("does NOT resolve ETH to the native sentinel on BSC (56)", async () => {
     mockGetCurrencies.mockResolvedValue([
-      [{ symbol: "ETH", address: BSC_ETH_ERC20, chainId: 56 } as never],
+      { symbol: "ETH", address: BSC_ETH_ERC20, chainId: 56 } as never,
     ]);
     const resolved = await resolveTokenAddress("ETH", 56);
     expect(resolved).not.toBe(NATIVE_EVM);
