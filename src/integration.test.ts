@@ -73,21 +73,20 @@ describe("Relay API - live smoke tests", () => {
     await expect(resolveChainId("fakechain")).rejects.toThrow(/unknown chain/i);
   });
 
-  // ─── /currencies/v1 ─────────────────────────────────────────────
+  // ─── /currencies/v2 ─────────────────────────────────────────────
 
-  it("POST /currencies/v1 returns tokens for Ethereum", async () => {
+  it("POST /currencies/v2 returns a flat list of tokens for Ethereum", async () => {
     const result = await getCurrencies({ chainIds: [1], limit: 5 });
     expect(result.length).toBeGreaterThan(0);
-    // First group is chain 1 results
-    expect(result[0].length).toBeGreaterThan(0);
-    expect(result[0][0].chainId).toBe(1);
-    expect(result[0][0].symbol).toBeTypeOf("string");
+    expect(result.length).toBeLessThanOrEqual(5);
+    expect(result.every((c) => c.chainId === 1)).toBe(true);
+    expect(result[0].symbol).toBeTypeOf("string");
   });
 
-  it("POST /currencies/v1 can search by term", async () => {
+  it("POST /currencies/v2 can search by term", async () => {
     const result = await getCurrencies({ chainIds: [1], term: "USDC", limit: 5 });
     expect(result.length).toBeGreaterThan(0);
-    const usdcFound = result[0].some((c) => c.symbol === "USDC");
+    const usdcFound = result.some((c) => c.symbol === "USDC");
     expect(usdcFound).toBe(true);
   });
 

@@ -1,7 +1,7 @@
 /**
  * Token symbol → address resolver.
  * Accepts either a token address (passed through) or a symbol like "USDC"/"ETH".
- * Uses a hardcoded map for common tokens, falls back to /currencies/v1 API search.
+ * Uses a hardcoded map for common tokens, falls back to /currencies/v2 API search.
  */
 
 import { getCurrencies } from "../relay-api.js";
@@ -81,7 +81,7 @@ function looksLikeAddress(input: string): boolean {
  * Resolution order:
  * 1. If input looks like an address, return it
  * 2. Check hardcoded native/USDC/USDT/WETH maps
- * 3. Fall back to /currencies/v1 API search
+ * 3. Fall back to /currencies/v2 API search
  *
  * Throws if the symbol can't be resolved on the given chain.
  */
@@ -115,14 +115,12 @@ export async function resolveTokenAddress(
 
   // Fall back to API search
   try {
-    const results = await getCurrencies({
+    const entries = await getCurrencies({
       chainIds: [chainId],
       term: input,
       limit: 5,
     });
 
-    // results is CurrencyEntry[][] — one array per chainId
-    const entries = results.flat();
     if (entries.length === 0) {
       throw new Error(
         `Token "${input}" not found on chain ${chainId}. Use get_supported_tokens to search, or provide the contract address directly.`

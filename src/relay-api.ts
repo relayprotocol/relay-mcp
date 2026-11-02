@@ -194,8 +194,8 @@ export interface CurrenciesRequest {
 
 export async function getCurrencies(
   params: CurrenciesRequest
-): Promise<CurrencyEntry[][]> {
-  return relayApi<CurrencyEntry[][]>("/currencies/v1", {
+): Promise<CurrencyEntry[]> {
+  return relayApi<CurrencyEntry[]>("/currencies/v2", {
     method: "POST",
     body: params,
   });

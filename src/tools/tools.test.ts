@@ -84,6 +84,7 @@ import { register as registerEstimateFees } from "./estimate-fees.js";
 import { register as registerTransactionStatus } from "./get-transaction-status.js";
 import { register as registerTransactionHistory } from "./get-transaction-history.js";
 import { register as registerSupportedChains } from "./get-supported-chains.js";
+import { register as registerSupportedTokens } from "./get-supported-tokens.js";
 import { register as registerApiSchema } from "./get-api-schema.js";
 // v0.3.0 tool imports
 import { register as registerCheckChainStatus } from "./check-chain-status.js";
@@ -940,6 +941,73 @@ describe("get_supported_chains", () => {
   it("includes summary text", async () => {
     const result = await handler({});
     expect(result.content[0].text).toContain("Found 3 supported chain");
+  });
+});
+
+// ─── get_supported_tokens ─────────────────────────────────────────
+
+describe("get_supported_tokens", () => {
+  const handler = captureToolHandler(registerSupportedTokens);
+
+  const USDC_ETH = { chainId: 1, address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", symbol: "USDC", name: "USD Coin", decimals: 6, vmType: "evm" };
+  const USDC_BASE = { chainId: 8453, address: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", symbol: "USDC", name: "USD Coin", decimals: 6, vmType: "evm" };
+  const SYRUP_USDC = { chainId: 1, address: "0x80ac24aa929eaf5013f6436cda2a7ba190f5cc0b", symbol: "syrupUSDC", name: "Syrup USDC", decimals: 6, vmType: "evm" };
+
+  beforeEach(() => {
+    vi.mocked(getCurrencies).mockResolvedValue([USDC_ETH, USDC_BASE, SYRUP_USDC]);
+  });
+
+  it("passes filters through to getCurrencies", async () => {
+    await handler({ chainIds: [1, 8453], term: "USDC", verified: true, limit: 20 });
+
+    expect(getCurrencies).toHaveBeenCalledWith({
+      chainIds: [1, 8453],
+      term: "USDC",
+      verified: true,
+      limit: 20,
+    });
+  });
+
+  it("groups the flat v2 response by symbol", async () => {
+    const result = await handler({ term: "USDC", verified: true, limit: 20 });
+
+    const data = JSON.parse(result.content[1].text);
+    expect(data).toEqual([
+      {
+        symbol: "USDC",
+        name: "USD Coin",
+        chains: [
+          { chainId: 1, address: USDC_ETH.address, decimals: 6 },
+          { chainId: 8453, address: USDC_BASE.address, decimals: 6 },
+        ],
+      },
+      {
+        symbol: "syrupUSDC",
+        name: "Syrup USDC",
+        chains: [{ chainId: 1, address: SYRUP_USDC.address, decimals: 6 }],
+      },
+    ]);
+  });
+
+  it("includes summary text", async () => {
+    const result = await handler({ term: "USDC", verified: true, limit: 20 });
+    expect(result.content[0].text).toContain('Found 2 tokens matching "USDC"');
+    expect(result.content[0].text).toContain("USDC (on 2 chains)");
+  });
+
+  it("handles an empty response", async () => {
+    vi.mocked(getCurrencies).mockResolvedValue([]);
+    const result = await handler({ term: "nope", verified: true, limit: 20 });
+
+    expect(result.content[0].text).toContain("Found 0 tokens");
+    expect(JSON.parse(result.content[1].text)).toEqual([]);
+  });
+
+  it("returns an MCP error when the API call fails", async () => {
+    vi.mocked(getCurrencies).mockRejectedValue(new Error("Relay API POST /currencies/v2 failed (400): bad"));
+    const result = await handler({ term: "USDC", verified: true, limit: 20 });
+
+    expect(result.isError).toBe(true);
   });
 });
 
