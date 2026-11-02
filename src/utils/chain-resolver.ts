@@ -61,7 +61,14 @@ const ALIASES: Record<string, string> = {
 export async function resolveChainId(
   input: string | number
 ): Promise<number> {
-  if (typeof input === "number") return input;
+  if (typeof input === "number") {
+    if (!Number.isSafeInteger(input) || input <= 0) {
+      throw new Error(
+        `Unknown chain "${input}". Chain ID must be a positive safe integer.`
+      );
+    }
+    return input;
+  }
 
   const num = parseInt(input, 10);
   if (Number.isInteger(num) && num > 0 && String(num) === input) {

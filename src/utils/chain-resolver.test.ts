@@ -42,6 +42,24 @@ describe("resolveChainId", () => {
     // Should NOT call API for numeric inputs
   });
 
+  it.each([1, 999999999, Number.MAX_SAFE_INTEGER])(
+    "returns positive safe integer %s without loading chains",
+    async (input) => {
+      vi.mocked(getChains).mockClear();
+      expect(await resolveChainId(input)).toBe(input);
+      expect(getChains).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([0, -1, 1.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid numeric chain ID %s without loading chains",
+    async (input) => {
+      vi.mocked(getChains).mockClear();
+      await expect(resolveChainId(input)).rejects.toThrow(/positive safe integer/i);
+      expect(getChains).not.toHaveBeenCalled();
+    }
+  );
+
   it("parses numeric string to number", async () => {
     expect(await resolveChainId("1")).toBe(1);
   });
